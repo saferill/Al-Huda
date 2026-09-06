@@ -124,7 +124,7 @@ Al-Huda is an open-source Android app for daily Islamic practices. It calculates
 ```bash
 git clone https://github.com/saferill/Al-Huda.git
 cd Al-Huda
-./gradlew assembleDebug
+./gradlew assembleRelease
 ```
 
 ---
