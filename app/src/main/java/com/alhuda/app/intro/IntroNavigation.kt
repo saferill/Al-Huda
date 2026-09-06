@@ -1,0 +1,527 @@
+package com.alhuda.app.intro
+
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.colorResource
+import androidx.compose.ui.res.dimensionResource
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
+import androidx.navigation3.runtime.NavKey
+import androidx.navigation3.runtime.entryProvider
+import androidx.navigation3.runtime.rememberNavBackStack
+import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
+import androidx.navigation3.ui.NavDisplay
+import androidx.savedstate.serialization.SavedStateConfiguration
+import com.alhuda.app.R
+import com.alhuda.app.core.presentation.AlHudaTheme
+import com.alhuda.app.core.presentation.components.AppSnackbarHost
+import com.alhuda.app.core.presentation.components.BlockingProgressDialog
+import com.alhuda.app.core.presentation.components.LocalSnackbarController
+import com.alhuda.app.core.presentation.components.SecondaryButton
+import com.alhuda.app.core.presentation.components.TertiaryButton
+import com.alhuda.app.core.presentation.components.TimedDangerDialog
+import com.alhuda.app.core.presentation.navigation.BindBackStackWithController
+import com.alhuda.app.core.presentation.navigation.Route
+import com.alhuda.app.core.presentation.navigation.navigateTo
+import com.alhuda.app.core.presentation.navigation.rememberHorizontalSlideDirections
+import com.alhuda.app.core.presentation.navigation.rootRedirectFallback
+import com.alhuda.app.core.presentation.util.drawVerticalScrollbar
+import com.alhuda.app.core.presentation.util.fadeScrollEdges
+import com.alhuda.app.core.presentation.util.patternedBackground
+import com.alhuda.app.core.presentation.util.rememberPatternImageBitmap
+import com.alhuda.app.intro.components.IntroSkipButton
+import com.alhuda.app.intro.components.IntroTitle
+import com.alhuda.app.intro.languageselection.LanguageSelectionScreen
+import com.alhuda.app.intro.languageselection.LanguageSelectionViewModel
+import com.alhuda.app.intro.restorebackup.RestoreBackupScreen
+import com.alhuda.app.main.location.LocationScreenContent
+import com.alhuda.app.main.location.LocationUiAction
+import com.alhuda.app.main.location.LocationViewModel
+import com.alhuda.app.main.settings.adhan.AdhanSettingsViewModel
+import com.alhuda.app.main.settings.adhan.PrayerScheduleScreen
+import com.alhuda.app.main.settings.adhan.ScheduleAndMuezzinContent
+import com.alhuda.app.main.settings.calculation.CalculationSettingsScreen
+import com.alhuda.app.main.settings.calculation.CalculationSettingsViewModel
+import com.alhuda.app.main.settings.calculation.adjustments.AdjustmentsScreen
+import com.alhuda.app.main.settings.calculation.adjustments.AdjustmentsViewModel
+import com.alhuda.app.main.settings.calculation.advanced.AdvancedCalcScreen
+import com.alhuda.app.main.settings.calculation.advanced.AdvancedCalcViewModel
+import com.alhuda.app.main.settings.troubleshoot.TroubleshootScreen
+import com.alhuda.app.main.settings.troubleshoot.TroubleshootViewModel
+import com.alhuda.app.main.settings.troubleshoot.advanced.AdvancedTroubleshootScreen
+import com.alhuda.app.main.settings.troubleshoot.advanced.AdvancedTroubleshootViewModel
+import kotlinx.serialization.modules.SerializersModule
+import kotlinx.serialization.modules.polymorphic
+
+@Composable
+fun IntroNavigation(onFinishIntro: () -> Unit) {
+    val slideDirections = rememberHorizontalSlideDirections()
+
+    val introBackstack =
+        rememberNavBackStack(
+            configuration =
+                SavedStateConfiguration {
+                    serializersModule = SerializersModule {
+                        polymorphic(NavKey::class) {
+                            subclass(
+                                Route.Intro.LanguageSelection::class,
+                                Route.Intro.LanguageSelection.serializer(),
+                            )
+                            subclass(
+                                Route.Intro.RestoreBackup::class,
+                                Route.Intro.RestoreBackup.serializer(),
+                            )
+                            subclass(
+                                Route.Intro.Location::class,
+                                Route.Intro.Location.serializer(),
+                            )
+                            subclass(
+                                Route.Intro.Calculation::class,
+                                Route.Intro.Calculation.serializer(),
+                            )
+                            subclass(
+                                Route.Intro.Calculation.Adjustments::class,
+                                Route.Intro.Calculation.Adjustments.serializer(),
+                            )
+                            subclass(
+                                Route.Intro.Calculation.AdvancedCalculation::class,
+                                Route.Intro.Calculation.AdvancedCalculation.serializer(),
+                            )
+                            subclass(
+                                Route.Intro.Adhan::class,
+                                Route.Intro.Adhan.serializer(),
+                            )
+                            subclass(
+                                Route.Intro.Adhan.PrayerSchedule::class,
+                                Route.Intro.Adhan.PrayerSchedule.serializer(),
+                            )
+                            subclass(
+                                Route.Intro.Troubleshoot::class,
+                                Route.Intro.Troubleshoot.serializer(),
+                            )
+                            subclass(
+                                Route.Intro.Troubleshoot.AdvancedTroubleshoot::class,
+                                Route.Intro.Troubleshoot.AdvancedTroubleshoot.serializer(),
+                            )
+                        }
+                    }
+                },
+            Route.Intro.LanguageSelection,
+        )
+
+    val introViewModel = hiltViewModel<IntroViewModel>()
+    val introUiState by introViewModel.uiState.collectAsStateWithLifecycle()
+    val introBackgroundColor = colorResource(R.color.intro_background)
+
+    BindBackStackWithController(
+        currentRoute = introBackstack::lastOrNull,
+        navigateTo = introBackstack::navigateTo,
+        popBack = { introBackstack.removeAt(introBackstack.lastIndex) },
+        canPopBack = { introBackstack.size > 1 },
+        onRouteVisible = { (it as? Route)?.let { route -> introViewModel.onAction(IntroUiAction.OnRouteVisible(route)) } },
+    )
+
+    LaunchedEffect(introUiState.appIntroDone) {
+        if (introUiState.appIntroDone) {
+            onFinishIntro()
+        }
+    }
+
+    NavDisplay(
+        backStack = introBackstack,
+        modifier = Modifier
+            .fillMaxSize()
+            .background(introBackgroundColor),
+        contentAlignment = Alignment.Center,
+        transitionSpec = {
+            slideInHorizontally(
+                animationSpec = tween(280),
+                initialOffsetX = { fullWidth -> fullWidth * slideDirections.forwardEnter },
+            ) togetherWith
+                slideOutHorizontally(
+                    animationSpec = tween(280),
+                    targetOffsetX = { fullWidth -> fullWidth * slideDirections.forwardExit / 2 },
+                )
+        },
+        popTransitionSpec = {
+            slideInHorizontally(
+                animationSpec = tween(280),
+                initialOffsetX = { fullWidth -> fullWidth * slideDirections.backEnter / 2 },
+            ) togetherWith
+                slideOutHorizontally(
+                    animationSpec = tween(280),
+                    targetOffsetX = { fullWidth -> fullWidth * slideDirections.backExit },
+                )
+        },
+        predictivePopTransitionSpec = {
+            slideInHorizontally(
+                animationSpec = tween(280),
+                initialOffsetX = { fullWidth -> fullWidth * slideDirections.backEnter / 2 },
+            ) togetherWith
+                slideOutHorizontally(
+                    animationSpec = tween(280),
+                    targetOffsetX = { fullWidth -> fullWidth * slideDirections.backExit },
+                )
+        },
+        entryDecorators =
+            listOf(
+                rememberSaveableStateHolderNavEntryDecorator(),
+                rememberViewModelStoreNavEntryDecorator(),
+            ),
+        entryProvider =
+            entryProvider(fallback = rootRedirectFallback(introBackstack, Route.Intro.LanguageSelection)) {
+                entry<Route.Intro.LanguageSelection> {
+                    val viewModel = hiltViewModel<LanguageSelectionViewModel>()
+                    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+                    LanguageSelectionScreen(
+                        uiState = uiState,
+                        onAction = viewModel::onAction,
+                        onIntroAction = introViewModel::onAction,
+                    )
+                }
+                entry<Route.Intro.RestoreBackup> {
+                    IntroStepScaffold(
+                        uiState = introUiState,
+                        onAction = introViewModel::onAction,
+                    ) { modifier ->
+                        RestoreBackupScreen(
+                            onIntroAction = introViewModel::onAction,
+                            modifier = modifier,
+                            busy = introUiState.restoring,
+                        )
+                    }
+                }
+                entry<Route.Intro.Location> {
+                    val viewModel = hiltViewModel<LocationViewModel>()
+                    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+                    IntroStepScaffold(
+                        uiState = introUiState,
+                        onAction = introViewModel::onAction,
+                        floatingActionButton = {
+                            if (uiState.locations.isNotEmpty()) {
+                                FloatingActionButton(
+                                    onClick = {
+                                        viewModel.onAction(LocationUiAction.OnNewLocationClick)
+                                    },
+                                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                ) {
+                                    Icon(
+                                        painterResource(R.drawable.add),
+                                        contentDescription = stringResource(R.string.add_new_location_button),
+                                    )
+                                }
+                            }
+                        },
+                    ) { modifier ->
+                        Column(
+                            modifier,
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(dimensionResource(R.dimen.element_padding)),
+                        ) {
+                            IntroTitle(R.string.location_title)
+                            LocationScreenContent(
+                                uiState = uiState,
+                                onAction = viewModel::onAction,
+                                getCountries = viewModel::getCountries,
+                                getCities = viewModel::getCities,
+                            )
+                        }
+                    }
+                }
+                entry<Route.Intro.Calculation> {
+                    val viewModel = hiltViewModel<CalculationSettingsViewModel>()
+                    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+                    IntroStepScaffold(
+                        uiState = introUiState,
+                        onAction = introViewModel::onAction,
+                    ) { modifier ->
+                        Column(
+                            modifier,
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(dimensionResource(R.dimen.element_padding)),
+                        ) {
+                            IntroTitle(R.string.calculation_title)
+                            CalculationSettingsScreen(
+                                uiState = uiState,
+                                onAction = viewModel::onAction,
+                                adjustmentsRoute = Route.Intro.Calculation.Adjustments,
+                                advancedRoute = Route.Intro.Calculation.AdvancedCalculation,
+                            )
+                        }
+                    }
+                }
+                entry<Route.Intro.Calculation.Adjustments> {
+                    val viewModel = hiltViewModel<AdjustmentsViewModel>()
+                    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+                    AdjustmentsScreen(
+                        uiState = uiState,
+                        onAction = viewModel::onAction,
+                    )
+                }
+                entry<Route.Intro.Calculation.AdvancedCalculation> {
+                    val viewModel = hiltViewModel<AdvancedCalcViewModel>()
+                    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+                    AdvancedCalcScreen(
+                        uiState = uiState,
+                        onAction = viewModel::onAction,
+                    )
+                }
+                entry<Route.Intro.Adhan> {
+                    val viewModel = hiltViewModel<AdhanSettingsViewModel>()
+                    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+                    IntroStepScaffold(
+                        uiState = introUiState,
+                        onAction = introViewModel::onAction,
+                    ) { modifier ->
+                        Column(
+                            modifier,
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(dimensionResource(R.dimen.element_padding)),
+                        ) {
+                            IntroTitle(R.string.schedule_and_muezzin_title)
+                            ScheduleAndMuezzinContent(
+                                uiState = uiState,
+                                onAction = viewModel::onAction,
+                                prayerScheduleRoute = { Route.Intro.Adhan.PrayerSchedule(it) },
+                            )
+                        }
+                    }
+                }
+                entry<Route.Intro.Adhan.PrayerSchedule> { key ->
+                    val viewModel = hiltViewModel<AdhanSettingsViewModel>()
+                    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+                    PrayerScheduleScreen(
+                        prayer = key.prayer,
+                        uiState = uiState,
+                        onAction = viewModel::onAction,
+                    )
+                }
+                entry<Route.Intro.Troubleshoot> {
+                    val viewModel = hiltViewModel<TroubleshootViewModel>()
+                    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+                    IntroStepScaffold(
+                        uiState = introUiState,
+                        onAction = introViewModel::onAction,
+                    ) { modifier ->
+                        Column(
+                            modifier,
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(dimensionResource(R.dimen.element_padding)),
+                        ) {
+                            IntroTitle(R.string.troubleshoot_title)
+                            TroubleshootScreen(
+                                uiState = uiState,
+                                onAction = viewModel::onAction,
+                                advancedRoute = Route.Intro.Troubleshoot.AdvancedTroubleshoot,
+                            )
+                        }
+                    }
+                }
+                entry<Route.Intro.Troubleshoot.AdvancedTroubleshoot> {
+                    val viewModel = hiltViewModel<AdvancedTroubleshootViewModel>()
+                    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+                    AdvancedTroubleshootScreen(
+                        uiState = uiState,
+                        onAction = viewModel::onAction,
+                    )
+                }
+            },
+    )
+    if (introUiState.showSkipDialog) {
+        TimedDangerDialog(
+            title = stringResource(R.string.attention_title),
+            text = stringResource(R.string.skip_dialog_body),
+            confirmLabel = stringResource(R.string.skip),
+            dismissLabel = stringResource(R.string.cancel),
+            seconds = 3,
+            onDismissRequest = { introViewModel.onAction(IntroUiAction.OnSkipDismiss) },
+            onConfirm = { introViewModel.onAction(IntroUiAction.OnSkipConfirmed) },
+        )
+    }
+    if (introUiState.restoring) {
+        BlockingProgressDialog(message = stringResource(R.string.restoring_backup))
+    }
+    val snackbarController = LocalSnackbarController.current
+    val resources = LocalResources.current
+    LaunchedEffect(introViewModel.restoreErrors) {
+        introViewModel.restoreErrors.collect {
+            snackbarController.show(resources.getString(R.string.restore_failed))
+        }
+    }
+}
+
+@Composable
+private fun IntroStepScaffold(
+    uiState: IntroUiState,
+    onAction: (IntroUiAction) -> Unit,
+    scrollable: Boolean = true,
+    floatingActionButton: @Composable (() -> Unit) = {},
+    content: @Composable (Modifier) -> Unit,
+) {
+    val patternImage = rememberPatternImageBitmap(R.drawable.pattern)
+    val scrollState = rememberScrollState()
+    val introBackgroundColor = colorResource(R.color.intro_background)
+
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        bottomBar = {
+            IntroBottomBar(
+                uiState = uiState,
+                onAction = onAction,
+            )
+        },
+        snackbarHost = { AppSnackbarHost(LocalSnackbarController.current.hostState) },
+        containerColor = introBackgroundColor,
+        floatingActionButton = floatingActionButton,
+    ) { paddingValues ->
+        val baseModifier =
+            Modifier
+                .fillMaxSize()
+                .patternedBackground(
+                    pattern = patternImage,
+                    backgroundColor = introBackgroundColor,
+                    patternAlpha = 0.03f,
+                )
+                .padding(paddingValues)
+
+        val contentModifier =
+            if (scrollable) {
+                baseModifier
+                    .fadeScrollEdges(scrollState, Orientation.Vertical)
+                    .drawVerticalScrollbar(scrollState, barColor = @Composable { MaterialTheme.colorScheme.onPrimary })
+                    .verticalScroll(scrollState)
+            } else {
+                baseModifier
+            }.padding(dimensionResource(R.dimen.page_padding))
+
+        content(contentModifier)
+    }
+}
+
+@Composable
+private fun IntroBottomBar(
+    uiState: IntroUiState,
+    onAction: (IntroUiAction) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(
+                horizontal = dimensionResource(R.dimen.page_padding),
+                vertical = dimensionResource(R.dimen.element_padding),
+            ),
+        verticalArrangement = Arrangement.spacedBy(dimensionResource(R.dimen.element_padding)),
+    ) {
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalArrangement = Arrangement.Center,
+            itemVerticalAlignment = Alignment.CenterVertically,
+        ) {
+            SecondaryButton(
+                onClick = {
+                    onAction(IntroUiAction.OnBackClick)
+                },
+            ) {
+                Text(stringResource(R.string.back_button))
+            }
+            IntroSkipButton {
+                onAction(IntroUiAction.OnSkipClick)
+            }
+            if (uiState.isLastStep) {
+                TertiaryButton(
+                    onClick = {
+                        onAction(IntroUiAction.OnFinishClick)
+                    },
+                ) {
+                    Text(stringResource(R.string.finish_button))
+                }
+            } else {
+                TertiaryButton(
+                    onClick = {
+                        onAction(IntroUiAction.OnNextClick)
+                    },
+                ) {
+                    Text(stringResource(R.string.next_button))
+                }
+            }
+        }
+
+        LinearProgressIndicator(
+            progress = { uiState.progress },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(4.dp),
+            color = MaterialTheme.colorScheme.tertiaryContainer,
+            trackColor = MaterialTheme.colorScheme.tertiary,
+        )
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun IntroStepScaffoldPreview() {
+    AlHudaTheme {
+        IntroStepScaffold(
+            uiState = IntroUiState(route = Route.Intro.LanguageSelection),
+            onAction = {},
+        ) {
+            Column(it) { }
+        }
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun IntroBottomBarEmptyPreview() {
+    AlHudaTheme {
+        IntroBottomBar(
+            uiState = IntroUiState(route = Route.Intro.LanguageSelection),
+            onAction = {},
+        )
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun IntroBottomBarFilledPreview() {
+    AlHudaTheme {
+        IntroBottomBar(
+            uiState = IntroUiState(route = Route.Intro.RestoreBackup),
+            onAction = {},
+        )
+    }
+}

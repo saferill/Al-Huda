@@ -1,0 +1,30 @@
+package com.alhuda.app.intro.components
+
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
+import com.alhuda.app.R
+import com.alhuda.app.core.presentation.AlHudaTheme
+
+@Composable
+fun IntroTitle(resId: Int) {
+    Text(
+        text = stringResource(resId),
+        style = MaterialTheme.typography.headlineMedium,
+        color = MaterialTheme.colorScheme.onPrimaryContainer,
+        fontWeight = FontWeight.Bold,
+        textAlign = TextAlign.Center,
+    )
+}
+
+@Preview
+@Composable
+private fun IntroTitlePreview() {
+    AlHudaTheme {
+        IntroTitle(R.string.location_title)
+    }
+}

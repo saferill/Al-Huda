@@ -1,0 +1,12 @@
+package com.alhuda.app.core.data.model.old
+
+object LegacyStorageKeys {
+    const val SETTINGS = "SETTINGS_STORAGE"
+    const val CALC_SETTINGS = "CALC_SETTINGS_STORAGE"
+    const val ALARM_SETTINGS = "ALARM_SETTINGS_STORAGE"
+    const val COUNTER = "COUNTER_STORAGE"
+    const val REMINDER = "REMINDER_STORAGE"
+    const val FAVORITE_LOCATIONS = "FAVORITE_LOCATIONS_STORAGE"
+
+    val ALL = listOf(SETTINGS, CALC_SETTINGS, ALARM_SETTINGS, COUNTER, REMINDER, FAVORITE_LOCATIONS)
+}

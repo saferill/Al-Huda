@@ -1,0 +1,496 @@
+package com.alhuda.app.main.home
+
+import android.content.res.Configuration
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FabPosition
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.Text
+import androidx.compose.material3.rememberDrawerState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.res.dimensionResource
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Devices
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import com.alhuda.app.R
+import com.alhuda.app.core.domain.model.calculation.CalculationAdjustments
+import com.alhuda.app.core.domain.model.calculation.CalculationLocationDetail
+import com.alhuda.app.core.domain.model.favorite_location.StaticFavoriteLocation
+import com.alhuda.app.core.domain.model.settings.HomeShortcut
+import com.alhuda.app.core.domain.model.settings.i18n
+import com.alhuda.app.core.domain.usecase.GetNextShariaTimesUseCase
+import com.alhuda.app.core.domain.usecase.GetShariaTimesUseCase
+import com.alhuda.app.core.domain.util.addDaysTimeZoneAware
+import com.alhuda.app.core.domain.util.formatInstant
+import com.alhuda.app.core.presentation.AlHudaTheme
+import com.alhuda.app.core.presentation.DarkOnTertiaryContainer
+import com.alhuda.app.core.presentation.DarkTertiaryContainer
+import com.alhuda.app.core.presentation.LightOnTertiaryContainer
+import com.alhuda.app.core.presentation.LightTertiaryContainer
+import com.alhuda.app.core.presentation.components.ScreenScaffold
+import com.alhuda.app.core.presentation.util.dropShadow2
+import com.alhuda.app.core.presentation.util.swipeNavigate
+import com.alhuda.app.core.util.device.DeviceUtils
+import com.alhuda.app.main.home.components.ConfigHintCard
+import com.alhuda.app.main.home.components.HomeHeader
+import com.alhuda.app.main.home.components.ShariaTimesBox
+import com.alhuda.app.main.home.components.ShariaTimesBoxUiState
+import io.github.meypod.adhan_kotlin.CalculationMethod
+import io.github.meypod.adhan_kotlin.data.DateComponents
+import kotlinx.coroutines.launch
+import kotlin.time.DurationUnit
+import kotlin.time.Instant
+import kotlin.time.toDuration
+
+private val WIDE_LAYOUT_MIN_WIDTH = 480.dp
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun HomeScreen(
+    uiState: HomeUiState,
+    onAction: (HomeUiAction) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val scope = rememberCoroutineScope()
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+
+    val configuration = LocalConfiguration.current
+    val windowWidth = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() }
+    val wideLayout = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE &&
+        windowWidth >= WIDE_LAYOUT_MIN_WIDTH
+
+    val context = LocalContext.current
+    val isTelevision = remember { DeviceUtils.isTelevision(context) }
+    val firstDrawerItemFocus = remember { FocusRequester() }
+    val menuButtonFocus = remember { FocusRequester() }
+    val drawerWasOpened = remember { mutableStateOf(false) }
+    LaunchedEffect(drawerState.isOpen) {
+        if (!isTelevision) return@LaunchedEffect
+        if (drawerState.isOpen) {
+            drawerWasOpened.value = true
+            runCatching { firstDrawerItemFocus.requestFocus() }
+        } else if (drawerWasOpened.value) {
+            drawerWasOpened.value = false
+            runCatching { menuButtonFocus.requestFocus() }
+        }
+    }
+
+    BackHandler(enabled = drawerState.isOpen) {
+        scope.launch { drawerState.close() }
+    }
+
+    ModalNavigationDrawer(
+        modifier = modifier,
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet(drawerState) {
+                Text(stringResource(R.string.app_name), modifier = Modifier.padding(dimensionResource(R.dimen.page_padding)))
+                HorizontalDivider()
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState()),
+                ) {
+                    NavigationDrawerItem(
+                        modifier = Modifier.focusRequester(firstDrawerItemFocus),
+                        icon = {
+                            Icon(painterResource(R.drawable.alarm), contentDescription = null)
+                        },
+                        label = { Text(stringResource(R.string.reminders_title)) },
+                        selected = false,
+                        onClick = {
+                            onAction(HomeUiAction.OnReminderLinkClick)
+                        },
+                    )
+                    NavigationDrawerItem(
+                        icon = {
+                            Icon(painterResource(R.drawable.compass_outline), contentDescription = null)
+                        },
+                        label = { Text(stringResource(R.string.qibla)) },
+                        selected = false,
+                        onClick = {
+                            onAction(HomeUiAction.OnQiblaLinkClick)
+                        },
+                    )
+                    NavigationDrawerItem(
+                        icon = {
+                            Icon(painterResource(R.drawable.counter), contentDescription = null)
+                        },
+                        label = { Text(stringResource(R.string.counter)) },
+                        selected = false,
+                        onClick = {
+                            onAction(HomeUiAction.OnCounterLinkClick)
+                        },
+                    )
+                    NavigationDrawerItem(
+                        icon = {
+                            Icon(painterResource(R.drawable.calendar_month_outline), contentDescription = null)
+                        },
+                        label = { Text(stringResource(R.string.monthly_view_title)) },
+                        selected = false,
+                        onClick = {
+                            onAction(HomeUiAction.OnMonthlyViewClick)
+                        },
+                    )
+                    NavigationDrawerItem(
+                        icon = {
+                            Icon(painterResource(R.drawable.settings), contentDescription = null)
+                        },
+                        label = { Text(stringResource(R.string.settings)) },
+                        selected = false,
+                        onClick = {
+                            onAction(HomeUiAction.OnSettingsLinkClick)
+                        },
+                    )
+                    NavigationDrawerItem(
+                        icon = {
+                            Icon(painterResource(R.drawable.outline_menu_book_24), contentDescription = null)
+                        },
+                        label = { Text(stringResource(R.string.prayer_guide)) },
+                        selected = false,
+                        onClick = {
+                            onAction(HomeUiAction.OnPrayerGuideClick)
+                        },
+                    )
+                    NavigationDrawerItem(
+                        icon = {
+                            Icon(painterResource(R.drawable.info_variant_outline), contentDescription = null)
+                        },
+                        label = { Text(stringResource(R.string.about)) },
+                        selected = false,
+                        onClick = {
+                            onAction(HomeUiAction.OnAboutLinkClick)
+                        },
+                    )
+                    if (uiState.isDeveloper) {
+                        NavigationDrawerItem(
+                            icon = {
+                                Icon(painterResource(R.drawable.outline_developer_mode_24), contentDescription = null)
+                            },
+                            label = { Text(stringResource(R.string.developer_title)) },
+                            selected = false,
+                            onClick = {
+                                onAction(HomeUiAction.OnDeveloperLinkClick)
+                            },
+                        )
+                    }
+                }
+            }
+        },
+    ) {
+        ScreenScaffold(
+            title = "",
+            onBackClick = {},
+            navigationIcon = {
+                IconButton(
+                    onClick = {
+                        scope.launch {
+                            drawerState.open()
+                        }
+                    },
+                    modifier = Modifier.focusRequester(menuButtonFocus),
+                ) {
+                    Icon(painterResource(R.drawable.menu), contentDescription = stringResource(R.string.menu))
+                }
+            },
+            titleContent = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier
+                        .clip(MaterialTheme.shapes.small)
+                        .clickable(role = Role.Button) { onAction(HomeUiAction.OnLocationTextClick) }
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.map_marker),
+                        contentDescription = stringResource(R.string.location_title),
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                    Text(
+                        text = uiState.location?.locationDetail?.toDisplayString()
+                            ?: stringResource(R.string.set_location_hint),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                    )
+                }
+            },
+            actions = {
+                uiState.homeShortcuts.forEach { shortcut ->
+                    val (iconRes, action) = when (shortcut) {
+                        HomeShortcut.Qibla -> R.drawable.compass_outline to HomeUiAction.OnQiblaShortcutClick
+                        HomeShortcut.Counter -> R.drawable.counter to HomeUiAction.OnCounterLinkClick
+                        HomeShortcut.Reminders -> R.drawable.alarm to HomeUiAction.OnReminderLinkClick
+                        HomeShortcut.MonthlyView -> R.drawable.calendar_month_outline to HomeUiAction.OnMonthlyViewClick
+                        HomeShortcut.UpcomingAlarms -> R.drawable.outline_calendar_month_24 to HomeUiAction.OnUpcomingAlarmsClick
+                    }
+                    IconButton(onClick = { onAction(action) }) {
+                        Icon(
+                            painterResource(iconRes),
+                            contentDescription = shortcut.i18n(),
+                        )
+                    }
+                }
+            },
+            floatingActionButton = {
+                AnimatedVisibility(
+                    modifier = Modifier.graphicsLayer { clip = false },
+                    visible = DateComponents.from(uiState.viewingInstant) != DateComponents.from(uiState.currentInstant),
+                    enter = slideInVertically(
+                        initialOffsetY = { it / 2 },
+                        animationSpec = tween(durationMillis = 150),
+                    ),
+                    exit = slideOutVertically(
+                        targetOffsetY = { it * 3 },
+                        animationSpec = tween(durationMillis = 200),
+                    ),
+                ) {
+                    val buttonShape = MaterialTheme.shapes.extraLarge
+                    val dark = uiState.themeColor.isDark()
+                    val containerColor = if (uiState.themeColor.isClassic()) {
+                        if (dark) DarkTertiaryContainer else LightTertiaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.tertiaryContainer
+                    }
+                    val contentColor = if (uiState.themeColor.isClassic()) {
+                        if (dark) DarkOnTertiaryContainer else LightOnTertiaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.onTertiaryContainer
+                    }
+                    ExtendedFloatingActionButton(
+                        onClick = { onAction(HomeUiAction.OnShowTodayClick) },
+                        shape = buttonShape,
+                        modifier = Modifier
+                            .widthIn(min = 160.dp)
+                            .dropShadow2(buttonShape),
+                        containerColor = containerColor,
+                        contentColor = contentColor,
+                    ) {
+                        Text(
+                            stringResource(R.string.show_today),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
+                }
+            },
+            topBarExpandedHeight = if (wideLayout) 30.dp else null,
+            floatingActionButtonPosition = FabPosition.Center,
+            scrollable = false,
+            contentPadding = PaddingValues(0.dp),
+            bottomBar = {
+                NavigationBar(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                ) {
+                    NavigationBarItem(
+                        selected = true,
+                        onClick = { },
+                        icon = {
+                            Icon(painterResource(R.drawable.alarm), contentDescription = stringResource(R.string.nav_prayer_times))
+                        },
+                        label = { Text(stringResource(R.string.nav_prayer_times)) },
+                    )
+                    NavigationBarItem(
+                        selected = false,
+                        onClick = { onAction(HomeUiAction.OnQuranLinkClick) },
+                        icon = {
+                            Icon(painterResource(R.drawable.quran), contentDescription = stringResource(R.string.quran))
+                        },
+                        label = { Text(stringResource(R.string.quran)) },
+                    )
+                }
+            },
+        ) {
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .swipeNavigate(
+                        onNext = { onAction(HomeUiAction.OnNextDayClick) },
+                        onPrev = { onAction(HomeUiAction.OnPrevDayClick) },
+                    ),
+            ) {
+                HomeHeader(
+                    uiState,
+                    wideLayout,
+                    onAction,
+                )
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .padding(
+                            horizontal = dimensionResource(R.dimen.page_padding),
+                        )
+                        .then(
+                            if (uiState.themeColor.isClassic()) {
+                                Modifier.padding(top = dimensionResource(R.dimen.tiny_padding))
+                            } else {
+                                Modifier
+                                    .offset(y = -dimensionResource(R.dimen.home_card_padding))
+                            },
+                        ),
+                    verticalArrangement = Arrangement.spacedBy(dimensionResource(R.dimen.element_padding)),
+                ) {
+                    if (uiState.location == null || !uiState.isCalculationConfigured) {
+                        ConfigHintCard(
+                            missingLocation = uiState.location == null,
+                            missingCalculation = !uiState.isCalculationConfigured,
+                            onLocationClick = { onAction(HomeUiAction.OnLocationTextClick) },
+                            onCalculationClick = { onAction(HomeUiAction.OnCalculationLinkClick) },
+                            modifier = Modifier.padding(bottom = dimensionResource(R.dimen.element_padding)),
+                        )
+                    }
+                    ShariaTimesBox(
+                        ShariaTimesBoxUiState(
+                            shariahTimes = uiState.shariaTimes,
+                            locale = uiState.locale,
+                            numberingSystem = uiState.numberingSystem,
+                            is24Hours = uiState.is24Hour,
+                            highlightedShariaTime = uiState.highlightedShariaTime,
+                            hiddenPrayers = uiState.hiddenPrayers,
+                            themeColor = uiState.themeColor,
+                            skippedPrayers = uiState.skippedPrayers,
+                            now = uiState.currentInstant,
+                        ),
+                        wideLayout = wideLayout,
+                        modifier = Modifier
+                            .weight(1f, fill = false)
+                            .then(
+                                if (uiState.themeColor.isClassic()) {
+                                    Modifier
+                                } else {
+                                    Modifier.extendMaxHeightBy(
+                                        dimensionResource(R.dimen.home_card_padding),
+                                    )
+                                },
+                            ),
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun Modifier.extendMaxHeightBy(extra: Dp) =
+    layout { measurable, constraints ->
+        val maxHeight = if (constraints.hasBoundedHeight) {
+            constraints.maxHeight + extra.roundToPx()
+        } else {
+            constraints.maxHeight
+        }
+        val placeable = measurable.measure(constraints.copy(maxHeight = maxHeight))
+        layout(placeable.width, placeable.height) {
+            placeable.place(0, 0)
+        }
+    }
+
+@Preview(
+    showBackground = true,
+    backgroundColor = 0xFF00585A,
+)
+@Preview(
+    showBackground = true,
+    backgroundColor = 0xFF00585A,
+    device = Devices.TABLET,
+)
+@Composable
+private fun HomeLoadedPreview() {
+    AlHudaTheme {
+        val location = StaticFavoriteLocation("foo", CalculationLocationDetail(0.0, 0.0, label = "Null Island"))
+        val instant = Instant.fromEpochMilliseconds(System.currentTimeMillis())
+        val viewing = instant.minus(1.toDuration(DurationUnit.DAYS))
+        val getShariaTimesUseCase = GetShariaTimesUseCase()
+        val shariahTimes = getShariaTimesUseCase(
+            instant = instant,
+            calculationParameters = CalculationMethod.MOON_SIGHTING_COMMITTEE.parameters,
+            calculationAdjustments = CalculationAdjustments(),
+            arabicCalendar = "islamic",
+            locationDetail = CalculationLocationDetail(0.0, 0.0),
+        )
+        val nextShariaTime = GetNextShariaTimesUseCase(getShariaTimesUseCase)(
+            instant = instant,
+            calculationParameters = CalculationMethod.MOON_SIGHTING_COMMITTEE.parameters,
+            calculationAdjustments = CalculationAdjustments(),
+            arabicCalendar = "islamic",
+            locationDetail = CalculationLocationDetail(0.0, 0.0),
+        )
+        HomeScreen(
+            uiState = HomeUiState(
+                currentInstant = instant,
+                viewingInstant = viewing,
+                calendar = "gregorian",
+                location = location,
+                shariaTimes = shariahTimes,
+                nextShariaTime = nextShariaTime,
+                highlightedShariaTime = nextShariaTime,
+            ),
+            onAction = {},
+        )
+    }
+}
+
+@Preview(
+    showBackground = true,
+    backgroundColor = 0xFF00585A,
+)
+@Preview(
+    showBackground = true,
+    backgroundColor = 0xFF00585A,
+    device = Devices.TABLET,
+)
+@Composable
+private fun HomeInitialPreview() {
+    AlHudaTheme {
+        HomeScreen(
+            uiState = HomeUiState(
+                calendar = "gregorian",
+            ),
+            onAction = {},
+        )
+    }
+}

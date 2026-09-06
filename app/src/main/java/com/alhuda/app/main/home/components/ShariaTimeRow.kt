@@ -1,0 +1,294 @@
+package com.alhuda.app.main.home.components
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.res.dimensionResource
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import com.alhuda.app.R
+import com.alhuda.app.core.domain.model.adhan.Prayer
+import com.alhuda.app.core.domain.model.adhan.i18n
+import com.alhuda.app.core.domain.model.settings.ThemeColor
+import com.alhuda.app.core.domain.util.formatInstant
+import com.alhuda.app.core.presentation.AlHudaTheme
+import com.alhuda.app.core.presentation.ClassicHighlightBackground
+import com.alhuda.app.core.presentation.ClassicBorderHighlight
+import com.alhuda.app.core.presentation.LightColorScheme
+import com.alhuda.app.core.presentation.TertiaryFixed
+import com.alhuda.app.core.presentation.util.dashedBorder
+import com.alhuda.app.core.presentation.util.dropShadow2Up
+import com.alhuda.app.core.presentation.util.solidBorder
+import kotlin.time.Clock
+import kotlin.time.DurationUnit
+import kotlin.time.toDuration
+
+@Composable
+fun ShariaTimeRow(
+    state: ShariaTimeRowUiState,
+    compact: Boolean = false,
+) {
+    val paddingRes = if (compact) R.dimen.element_padding_compact else R.dimen.element_padding
+    val classic = state.themeColor.isClassic()
+    val fadeTarget = if (state.themeColor == ThemeColor.ClassicLight) Color.White else Color.Black
+    val textColor = if (classic) {
+        when (state.highlightState) {
+            HighlightState.BeforeHighlight ->
+                lerp(MaterialTheme.colorScheme.outline, fadeTarget, 0.3f)
+
+            HighlightState.Highlighted -> MaterialTheme.colorScheme.primary
+
+            HighlightState.AfterHighlight -> MaterialTheme.colorScheme.onSurface
+        }
+    } else {
+        when (state.highlightState) {
+            HighlightState.BeforeHighlight -> MaterialTheme.colorScheme.outline
+            HighlightState.Highlighted ->
+                if (state.themeColor == ThemeColor.Dynamic) {
+                    LightColorScheme.onTertiaryFixed
+                } else {
+                    MaterialTheme.colorScheme.onTertiaryFixed
+                }
+            HighlightState.AfterHighlight -> MaterialTheme.colorScheme.onSecondaryContainer
+        }
+    }
+    Row(
+        Modifier
+            .then(
+                if (classic) {
+                    Modifier
+                } else {
+                    when (state.highlightState) {
+                        HighlightState.BeforeHighlight -> Modifier.background(MaterialTheme.colorScheme.surfaceVariant)
+
+                        HighlightState.Highlighted -> {
+                            val shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+                            Modifier
+                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                                .dropShadow2Up(shape)
+                                .clip(shape)
+                                .background(TertiaryFixed)
+                        }
+
+                        HighlightState.AfterHighlight -> Modifier.background(
+                            MaterialTheme.colorScheme.secondaryContainer,
+                        )
+                    }
+                },
+            )
+            .then(
+                if (classic) {
+                    Modifier
+                } else {
+                    Modifier.padding(
+                        dimensionResource(paddingRes),
+                    )
+                },
+            ),
+    ) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .then(
+                    if (state.prayer.isNonPrayer) {
+                        val highlighted = state.highlightState == HighlightState.Highlighted
+                        val classicLightHighlight =
+                            highlighted && state.themeColor == ThemeColor.ClassicLight
+                        Modifier
+                            .then(
+                                if (classicLightHighlight) {
+                                    Modifier
+                                        .clip(MaterialTheme.shapes.medium)
+                                        .background(ClassicHighlightBackground)
+                                } else {
+                                    Modifier
+                                },
+                            )
+                            .dashedBorder(
+                                borderColor = if (classic && highlighted) ClassicBorderHighlight else textColor,
+                                shape = if (classic) MaterialTheme.shapes.medium else MaterialTheme.shapes.extraLarge,
+                                strokeWidth = if (classic && highlighted) 7f else 3f,
+                            )
+                    } else if (classic) {
+                        val highlighted = state.highlightState == HighlightState.Highlighted
+                        val classicLightHighlight =
+                            highlighted && state.themeColor == ThemeColor.ClassicLight
+                        Modifier
+                            .then(
+                                if (classicLightHighlight) {
+                                    Modifier
+                                        .clip(MaterialTheme.shapes.medium)
+                                        .background(ClassicHighlightBackground)
+                                } else {
+                                    Modifier
+                                },
+                            )
+                            .solidBorder(
+                                borderColor = if (highlighted) ClassicBorderHighlight else textColor,
+                                shape = MaterialTheme.shapes.medium,
+                                strokeWidth = if (highlighted) 7f else 3f,
+                            )
+                    } else {
+                        Modifier
+                    },
+                )
+                .padding(dimensionResource(R.dimen.element_padding)),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(dimensionResource(R.dimen.element_padding_compact)),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    state.prayer.i18n(),
+                    fontWeight = if (state.highlightState ==
+                        HighlightState.Highlighted
+                    ) {
+                        FontWeight.SemiBold
+                    } else {
+                        FontWeight.Normal
+                    },
+                    color = textColor,
+                )
+                if (state.skipped) {
+                    Icon(
+                        painterResource(R.drawable.outline_volume_off),
+                        contentDescription = stringResource(R.string.upcoming_alarm_skipped),
+                        tint = textColor,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
+            if (state.instant == null) {
+                Text("--:--")
+            } else {
+                Text(
+                    formatInstant(
+                        state.instant,
+                        state.locale,
+                        "gregorian",
+                        if (state.is24Hours) "HH:mm" else "hh:mm",
+                        state.numberingSystem,
+                    ),
+                    fontWeight = if (state.highlightState ==
+                        HighlightState.Highlighted
+                    ) {
+                        FontWeight.SemiBold
+                    } else {
+                        FontWeight.Normal
+                    },
+                    color = textColor,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RowStatesPreview(themeColor: ThemeColor = ThemeColor.Default) {
+    Column {
+        ShariaTimeRow(
+            ShariaTimeRowUiState(
+                Prayer.Fajr,
+                Clock.System.now().plus(12.toDuration(DurationUnit.HOURS)),
+                is24Hours = false,
+                highlightState = HighlightState.BeforeHighlight,
+                themeColor = themeColor,
+            ),
+        )
+        ShariaTimeRow(
+            ShariaTimeRowUiState(
+                Prayer.Sunrise,
+                Clock.System.now(),
+                highlightState = HighlightState.Highlighted,
+                themeColor = themeColor,
+            ),
+        )
+        ShariaTimeRow(
+            ShariaTimeRowUiState(
+                Prayer.Dhuhr,
+                null,
+                highlightState = HighlightState.AfterHighlight,
+                themeColor = themeColor,
+                skipped = true,
+            ),
+        )
+    }
+}
+
+@Preview(showBackground = true, backgroundColor = 0xFFFFFFFF)
+@Composable
+private fun ShariaTimeRowPreview() {
+    AlHudaTheme {
+        RowStatesPreview()
+    }
+}
+
+@Preview(showBackground = true, backgroundColor = 0xFFFFFFFF)
+@Composable
+private fun ShariaTimeRowClassicLightPreview() {
+    AlHudaTheme(ThemeColor.ClassicLight) {
+        RowStatesPreview(ThemeColor.ClassicLight)
+    }
+}
+
+@Preview(showBackground = true, backgroundColor = 0xFF000000)
+@Composable
+private fun ShariaTimeRowClassicDarkPreview() {
+    AlHudaTheme(ThemeColor.ClassicDark) {
+        RowStatesPreview(ThemeColor.ClassicDark)
+    }
+}
+
+@Preview(showBackground = true, backgroundColor = 0xFFFFFFFF)
+@Composable
+private fun ShariaTimeRowClassicLightPrayerPreview() {
+    AlHudaTheme(ThemeColor.ClassicLight) {
+        Box(Modifier.padding(16.dp)) {
+            ShariaTimeRow(
+                ShariaTimeRowUiState(
+                    Prayer.Dhuhr,
+                    Clock.System.now(),
+                    highlightState = HighlightState.Highlighted,
+                    themeColor = ThemeColor.ClassicLight,
+                ),
+            )
+        }
+    }
+}
+
+@Preview(showBackground = true, backgroundColor = 0xFFFFFFFF)
+@Composable
+private fun ShariaTimeRowClassicLightNonPrayerPreview() {
+    AlHudaTheme(ThemeColor.ClassicLight) {
+        Box(Modifier.padding(16.dp)) {
+            ShariaTimeRow(
+                ShariaTimeRowUiState(
+                    Prayer.Sunrise,
+                    Clock.System.now(),
+                    highlightState = HighlightState.Highlighted,
+                    themeColor = ThemeColor.ClassicLight,
+                ),
+            )
+        }
+    }
+}

@@ -1,0 +1,12 @@
+package com.alhuda.app.core.domain.repository
+
+import com.alhuda.app.core.domain.model.calculation.CalculationSettings
+import kotlinx.coroutines.flow.Flow
+
+interface CalculationSettingsRepository {
+    val data: Flow<CalculationSettings>
+
+    suspend fun fetch(): CalculationSettings
+
+    suspend fun update(transform: (t: CalculationSettings) -> CalculationSettings)
+}

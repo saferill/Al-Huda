@@ -1,0 +1,12 @@
+package com.alhuda.app.core.domain.repository
+
+import com.alhuda.app.core.domain.model.counter.Counter
+import kotlinx.coroutines.flow.Flow
+
+interface CounterRepository {
+    val data: Flow<List<Counter>>
+
+    suspend fun fetch(): List<Counter>
+
+    suspend fun update(transform: (t: List<Counter>) -> List<Counter>)
+}

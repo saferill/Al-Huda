@@ -1,0 +1,152 @@
+package com.alhuda.app.core.presentation.components
+
+import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FabPosition
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.res.dimensionResource
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
+import com.alhuda.app.R
+import com.alhuda.app.core.presentation.AlHudaThemePreview
+import com.alhuda.app.core.presentation.util.drawVerticalScrollbar
+import com.alhuda.app.core.presentation.util.fadeScrollEdges
+
+data class PageScrollViewportBounds(
+    val topPx: Float,
+    val bottomPx: Float,
+)
+
+val LocalPageScrollViewportBounds = compositionLocalOf<PageScrollViewportBounds?> { null }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ScreenScaffold(
+    title: String,
+    onBackClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    titleContent: (@Composable () -> Unit)? = null,
+    navigationIcon: @Composable () -> Unit = { BackButton(onBackClick) },
+    actions: @Composable RowScope.() -> Unit = {},
+
+    topBarExpandedHeight: Dp? = null,
+    floatingActionButton: @Composable () -> Unit = {},
+    floatingActionButtonPosition: FabPosition = FabPosition.End,
+    snackbarHost: @Composable () -> Unit = { AppSnackbarHost(LocalSnackbarController.current.hostState) },
+    scrollable: Boolean = true,
+    scrollState: ScrollState? = null,
+    contentPadding: PaddingValues? = null,
+    verticalArrangement: Arrangement.Vertical? = null,
+    bottomBar: @Composable () -> Unit = {},
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val resolvedPadding = contentPadding ?: PaddingValues(dimensionResource(R.dimen.page_padding))
+    val resolvedArrangement =
+        verticalArrangement ?: Arrangement.spacedBy(dimensionResource(R.dimen.element_padding))
+    val fallbackScrollState = rememberScrollState()
+    val resolvedScrollState = if (scrollable) (scrollState ?: fallbackScrollState) else null
+    Scaffold(
+        modifier = modifier,
+        snackbarHost = snackbarHost,
+        topBar = {
+            CenterAlignedTopAppBar(
+                navigationIcon = navigationIcon,
+                title = {
+                    if (titleContent != null) {
+                        titleContent()
+                    } else {
+                        Text(title, modifier = Modifier.semantics { heading() })
+                    }
+                },
+                actions = actions,
+                expandedHeight = topBarExpandedHeight ?: TopAppBarDefaults.TopAppBarExpandedHeight,
+            )
+        },
+        floatingActionButton = floatingActionButton,
+        floatingActionButtonPosition = floatingActionButtonPosition,
+        bottomBar = bottomBar,
+    ) { paddingValues ->
+        var viewportBounds by remember { mutableStateOf<PageScrollViewportBounds?>(null) }
+        val inner = Modifier
+            .fillMaxSize()
+            .padding(paddingValues)
+            .then(
+                if (resolvedScrollState != null) {
+                    Modifier
+
+                        .onGloballyPositioned { coords ->
+                            val top = coords.localToWindow(Offset.Zero).y
+                            viewportBounds = PageScrollViewportBounds(top, top + coords.size.height)
+                        }
+                        .fadeScrollEdges(resolvedScrollState, Orientation.Vertical)
+                        .drawVerticalScrollbar(resolvedScrollState)
+                        .verticalScroll(resolvedScrollState)
+                } else {
+                    Modifier
+                },
+            )
+            .padding(resolvedPadding)
+        CompositionLocalProvider(
+            LocalPageScrollViewportBounds provides if (resolvedScrollState != null) viewportBounds else null,
+        ) {
+            Column(
+                modifier = inner,
+                verticalArrangement = resolvedArrangement,
+                content = content,
+            )
+        }
+    }
+}
+
+@Composable
+fun BackButton(onClick: () -> Unit) {
+    IconButton(onClick = onClick) {
+        Icon(
+            painterResource(R.drawable.arrow_back),
+            contentDescription = stringResource(R.string.back_button),
+        )
+    }
+}
+
+@Preview
+@Composable
+private fun ScreenScaffoldPreview() {
+    AlHudaThemePreview {
+        ScreenScaffold(
+            title = "Settings",
+            onBackClick = {},
+        ) {
+            Text("Body content")
+            Text("Another row")
+        }
+    }
+}

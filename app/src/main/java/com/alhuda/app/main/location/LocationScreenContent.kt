@@ -1,0 +1,550 @@
+package com.alhuda.app.main.location
+
+import android.content.ClipData
+import android.icu.text.DateFormat
+import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.dropShadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.dimensionResource
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Devices
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
+import com.alhuda.app.R
+import com.alhuda.app.core.domain.model.calculation.CalculationLocationDetail
+import com.alhuda.app.core.domain.model.favorite_location.FavoriteLocation
+import com.alhuda.app.core.domain.model.favorite_location.StaticFavoriteLocation
+import com.alhuda.app.core.domain.model.favorite_location.TravelingFavoriteLocation
+import com.alhuda.app.core.domain.model.geo.CityGeoInfo
+import com.alhuda.app.core.domain.model.geo.CountryGeoInfo
+import com.alhuda.app.core.domain.util.formatInstant
+import com.alhuda.app.core.presentation.AlHudaTheme
+import com.alhuda.app.core.presentation.components.ACard
+import com.alhuda.app.core.presentation.components.DangerDialog
+import com.alhuda.app.core.presentation.components.InformationCard
+import com.alhuda.app.core.presentation.components.PrimaryButton
+import com.alhuda.app.core.presentation.components.ReorderableLazyColumn
+import com.alhuda.app.core.presentation.components.SettingSwitch
+import com.alhuda.app.core.presentation.dialog.rememberLocationAccessHelperDialogs
+import com.alhuda.app.core.presentation.util.bottomBorder
+import com.alhuda.app.main.location.components.EditLocationLabelDialog
+import com.alhuda.app.main.location.components.NewLocationDialog
+import kotlinx.coroutines.launch
+import kotlin.time.Clock
+
+@Composable
+fun LocationScreenContent(
+    uiState: LocationUiState,
+    onAction: (LocationUiAction) -> Unit,
+    getCountries: suspend () -> List<CountryGeoInfo>,
+    getCities: suspend (countryCode: String) -> List<CityGeoInfo>,
+    modifier: Modifier = Modifier,
+    pageScrollState: ScrollState? = null,
+) {
+    val requestLocation = rememberLocationAccessHelperDialogs(
+        requireBackground = true,
+        onPermissionGranted = {
+            onAction(LocationUiAction.OnTravelModeChange(true))
+        },
+    )
+
+    val triggerLocation = { requestLocation(true) }
+    if (uiState.isNewLocationDialogOpen) {
+        NewLocationDialog(
+            onAction = onAction,
+            getCountries = getCountries,
+            getCities = getCities,
+        )
+    }
+
+    uiState.editLabelDraft?.let { draft ->
+        EditLocationLabelDialog(draft = draft, onAction = onAction)
+    }
+
+    val deletingLocation = uiState.deleteLocationDialogLocation
+    if (deletingLocation != null) {
+        DangerDialog(
+            title = stringResource(R.string.delete_location_confirm_title),
+            text = stringResource(
+                R.string.delete_location_confirm_body,
+                deletingLocation.locationDetail.toDisplayString(),
+            ),
+            confirmLabel = stringResource(R.string.delete),
+            dismissLabel = stringResource(R.string.cancel),
+            onConfirm = {
+                onAction(LocationUiAction.OnDeleteLocationConfirm(deletingLocation.id))
+            },
+            onDismissRequest = {
+                onAction(LocationUiAction.OnDeleteLocationDismiss)
+            },
+        )
+    }
+
+    Column(
+        modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(dimensionResource(R.dimen.element_padding)),
+    ) {
+        InformationCard(Modifier.fillMaxWidth()) {
+            Column {
+                Text(stringResource(R.string.location_info_card))
+            }
+        }
+        ACard { cardPadding ->
+            Column(Modifier.padding(cardPadding)) {
+                SettingSwitch(
+                    stringResource(R.string.location_traveling_mode),
+                    stringResource(R.string.location_traveling_hint),
+                    checked = uiState.travelMode,
+                ) {
+                    if (it) {
+                        triggerLocation()
+                    } else {
+                        onAction(LocationUiAction.OnTravelModeChange(false))
+                    }
+                }
+                AnimatedVisibility(uiState.travelMode && uiState.travelingModeLastUpdate != null) {
+                    if (uiState.travelingModeLastUpdate != null) {
+                        Text(
+                            stringResource(
+                                R.string.last_updated_at,
+                                formatInstant(
+                                    uiState.travelingModeLastUpdate,
+                                    uiState.locale,
+                                    uiState.calendar,
+                                    DateFormat.YEAR_MONTH_DAY + DateFormat.HOUR24_MINUTE,
+                                    uiState.numberingSystem,
+                                ),
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = dimensionResource(R.dimen.tiny_padding)),
+                        )
+                    }
+                }
+            }
+        }
+
+        ACard(Modifier.fillMaxWidth()) { cardPadding ->
+            Column(
+                Modifier.padding(cardPadding),
+                verticalArrangement = Arrangement.spacedBy(dimensionResource(R.dimen.element_padding)),
+            ) {
+                Text(
+                    text = stringResource(R.string.locations_list_title),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                if (uiState.locations.isEmpty()) {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(dimensionResource(R.dimen.icon_padding)),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Text(
+                            stringResource(R.string.locations_list_empty_state),
+                            modifier = Modifier.fillMaxWidth(),
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                        PrimaryButton(
+                            onClick = { onAction(LocationUiAction.OnNewLocationClick) },
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.add),
+                                contentDescription = null,
+                            )
+                            Spacer(Modifier.width(dimensionResource(R.dimen.icon_padding)))
+                            Text(stringResource(R.string.add_new_location_button))
+                        }
+                    }
+                } else {
+                    LocationList(
+                        list = uiState.locations,
+                        onAction = onAction,
+                        selectedId = uiState.selectedLocationId,
+                        travelModeWorking = uiState.travelModeWorking,
+                        triggerLocation = triggerLocation,
+                        pageScrollState = pageScrollState,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LocationListItem(
+    item: FavoriteLocation,
+    modifier: Modifier = Modifier,
+    selected: Boolean = false,
+    onAction: (LocationUiAction) -> Unit,
+    menuExpanded: Boolean = false,
+    dragHandleModifier: Modifier = Modifier,
+    dragging: Boolean = false,
+    interactionEnabled: Boolean = true,
+    travelModeWorking: Boolean = false,
+    triggerLocation: () -> Unit = {},
+) {
+    var expanded by remember(item.id) { mutableStateOf(menuExpanded) }
+    val clipboard = LocalClipboard.current
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    ListItem(
+        modifier = modifier
+            .zIndex(if (dragging) 1f else 0f)
+            .graphicsLayer {
+                alpha = if (dragging) 0f else 1f
+            }
+            .bottomBorder(MaterialTheme.colorScheme.outlineVariant, 2.dp),
+        headlineContent = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(dimensionResource(R.dimen.icon_padding)),
+            ) {
+                if (item is TravelingFavoriteLocation) {
+                    Text(text = stringResource(R.string.location_traveling_mode))
+                    if (travelModeWorking) {
+                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    }
+                } else {
+                    Text(text = item.locationDetail.toNamed() ?: item.id)
+                }
+            }
+        },
+        supportingContent = {
+            Text(item.locationDetail.toCoordsString())
+        },
+        leadingContent = {
+            Icon(
+                painter = painterResource(R.drawable.grip),
+                contentDescription = stringResource(R.string.drag_handle_description),
+                modifier = dragHandleModifier,
+            )
+        },
+        trailingContent = {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(dimensionResource(R.dimen.icon_padding)),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (selected) {
+                    Icon(
+                        painterResource(R.drawable.baseline_check_24),
+                        contentDescription = stringResource(R.string.selected),
+                        modifier = Modifier.minimumInteractiveComponentSize(),
+                    )
+                }
+
+                Column(horizontalAlignment = Alignment.End) {
+                    IconButton(
+                        onClick = {
+                            if (interactionEnabled) expanded = true
+                        },
+                        enabled = interactionEnabled,
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.menu_more_h),
+                            contentDescription = stringResource(R.string.see_options),
+                        )
+                    }
+
+                    DropdownMenu(
+                        expanded = expanded && interactionEnabled,
+                        onDismissRequest = { expanded = false },
+                    ) {
+                        if (item !is TravelingFavoriteLocation) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.edit_label)) },
+                                trailingIcon = {
+                                    Icon(
+                                        painter = painterResource(R.drawable.outline_edit_24),
+                                        contentDescription = null,
+                                    )
+                                },
+                                onClick = {
+                                    expanded = false
+                                    onAction(LocationUiAction.OnEditLabelClick(item.id))
+                                },
+                                enabled = interactionEnabled,
+                            )
+                        }
+
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.copy_coordinates)) },
+                            trailingIcon = {
+                                Icon(
+                                    painter = painterResource(R.drawable.content_copy),
+                                    contentDescription = null,
+                                )
+                            },
+                            onClick = {
+                                expanded = false
+                                val coords = item.locationDetail.toCoordsString()
+                                scope.launch {
+                                    clipboard.setClipEntry(
+                                        ClipEntry(ClipData.newPlainText("coordinates", coords)),
+                                    )
+                                    Toast
+                                        .makeText(context, R.string.coordinates_copied, Toast.LENGTH_SHORT)
+                                        .show()
+                                }
+                            },
+                            enabled = interactionEnabled,
+                        )
+
+                        if (!selected) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.set_as_default)) },
+                                trailingIcon = {
+                                    Icon(
+                                        painter = painterResource(R.drawable.baseline_check_24),
+                                        contentDescription = null,
+                                    )
+                                },
+                                onClick = {
+                                    expanded = false
+                                    if (item is TravelingFavoriteLocation) {
+                                        triggerLocation()
+                                    } else {
+                                        onAction(LocationUiAction.OnSetAsDefaultClick(item.id))
+                                    }
+                                },
+                                enabled = interactionEnabled,
+                            )
+                        }
+
+                        if (item !is TravelingFavoriteLocation) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.delete_location)) },
+                                trailingIcon = {
+                                    Icon(
+                                        painter = painterResource(R.drawable.delete),
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.error,
+                                    )
+                                },
+                                onClick = {
+                                    expanded = false
+                                    onAction(LocationUiAction.OnDeleteLocationClick(item.id))
+                                },
+                                enabled = interactionEnabled,
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        colors = ListItemDefaults.colors().copy(
+            containerColor = if (selected) {
+                MaterialTheme.colorScheme.surfaceContainerHighest
+            } else {
+                MaterialTheme.colorScheme.surfaceContainer
+            },
+        ),
+    )
+}
+
+@Composable
+private fun LocationList(
+    list: List<FavoriteLocation>,
+    onAction: (LocationUiAction) -> Unit,
+    selectedId: String? = null,
+    travelModeWorking: Boolean = false,
+    triggerLocation: () -> Unit = {},
+    pageScrollState: ScrollState? = null,
+) {
+    val listState = rememberLazyListState()
+
+    ReorderableLazyColumn(
+        items = list,
+        key = { it.id },
+        onMove = { fromIndex, toIndex ->
+            onAction(LocationUiAction.OnMoveLocation(fromIndex = fromIndex, toIndex = toIndex))
+        },
+        listState = listState,
+        scrollable = false,
+        pageScrollState = pageScrollState,
+        listModifier = Modifier
+            .dropShadow(RectangleShape) {
+                this.radius = 2.dp.toPx()
+                this.offset = Offset(0f, 0f)
+                this.spread = 1f
+                this.alpha = 0.25f
+            }
+            .background(MaterialTheme.colorScheme.surface),
+        itemContent = { item, isPlaceholder, itemModifier, dragHandleModifier ->
+            LocationListItem(
+                item = item,
+                selected = item.id == selectedId,
+                onAction = onAction,
+                dragging = isPlaceholder,
+                modifier = itemModifier,
+                dragHandleModifier = dragHandleModifier,
+                travelModeWorking = travelModeWorking,
+                triggerLocation = triggerLocation,
+            )
+        },
+        overlayContent = { item, overlayModifier ->
+            LocationListItem(
+                item = item,
+                selected = item.id == selectedId,
+                onAction = {},
+                dragging = false,
+                interactionEnabled = false,
+                modifier = overlayModifier,
+                dragHandleModifier = Modifier,
+                triggerLocation = triggerLocation,
+            )
+        },
+    )
+}
+
+private val demoLocations = listOf(
+    TravelingFavoriteLocation(
+        CalculationLocationDetail(56.1304, 106.3468, null, null),
+    ),
+    StaticFavoriteLocation(
+        "canada",
+        CalculationLocationDetail(56.1304, 106.3468, null, null, "Canada"),
+    ),
+    StaticFavoriteLocation(
+        "baqdad",
+        CalculationLocationDetail(
+            33.312805,
+            44.361488,
+            CityGeoInfo("Baqdad", "-", 1.0, 1.0, "IQ", "Baqdad"),
+            CountryGeoInfo("IQ", "", "Iraq", "Iraq"),
+            null,
+        ),
+    ),
+)
+
+@Preview(
+    showBackground = true,
+    backgroundColor = 0xFF00585A,
+)
+@Preview(
+    showBackground = true,
+    backgroundColor = 0xFF00585A,
+    device = Devices.TABLET,
+)
+@Composable
+private fun LocationScreenContentPreview() {
+    AlHudaTheme {
+        LocationScreenContent(
+            uiState = LocationUiState(),
+            onAction = {},
+            getCities = { emptyList() },
+            getCountries = { emptyList() },
+        )
+    }
+}
+
+@Preview(
+    showBackground = true,
+    backgroundColor = 0xFF00585A,
+)
+@Composable
+private fun LocationScreenContentWithLocationsPreview() {
+    AlHudaTheme {
+        val locations = remember {
+            mutableStateListOf<FavoriteLocation>().apply { addAll(demoLocations) }
+        }
+        LocationScreenContent(
+            uiState = LocationUiState(locations.toList(), selectedLocationId = TravelingFavoriteLocation.LOCATION_ID),
+            onAction = { action ->
+                when (action) {
+                    is LocationUiAction.OnMoveLocation -> {
+                        val from = action.fromIndex
+                        val to = action.toIndex
+                        if (from in locations.indices && to in locations.indices && from != to) {
+                            val item = locations.removeAt(from)
+                            locations.add(to, item)
+                        }
+                    }
+
+                    else -> Unit
+                }
+            },
+            getCities = { emptyList() },
+            getCountries = { emptyList() },
+        )
+    }
+}
+
+@Preview(
+    showBackground = true,
+    backgroundColor = 0xFF00585A,
+)
+@Composable
+private fun LocationScreenContentWithTravelModeUpdatePreview() {
+    AlHudaTheme {
+        val locations = remember {
+            mutableStateListOf<FavoriteLocation>().apply { addAll(demoLocations) }
+        }
+        LocationScreenContent(
+            uiState = LocationUiState(
+                locations.toList(),
+                selectedLocationId = TravelingFavoriteLocation.LOCATION_ID,
+                travelMode = true,
+                travelingModeLastUpdate = Clock.System.now(),
+            ),
+            onAction = { action ->
+                when (action) {
+                    is LocationUiAction.OnMoveLocation -> {
+                        val from = action.fromIndex
+                        val to = action.toIndex
+                        if (from in locations.indices && to in locations.indices && from != to) {
+                            val item = locations.removeAt(from)
+                            locations.add(to, item)
+                        }
+                    }
+
+                    else -> Unit
+                }
+            },
+            getCities = { emptyList() },
+            getCountries = { emptyList() },
+        )
+    }
+}

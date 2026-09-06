@@ -1,0 +1,352 @@
+package com.alhuda.app.core.data.audio
+
+import android.Manifest
+import android.annotation.SuppressLint
+import android.app.PendingIntent
+import android.app.Service
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
+import android.media.MediaPlayer
+import android.net.Uri
+import android.os.Build
+import android.os.IBinder
+import android.os.PowerManager
+import android.telephony.PhoneStateListener
+import android.telephony.TelephonyCallback
+import android.telephony.TelephonyManager
+import androidx.core.app.NotificationChannelCompat
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
+import androidx.core.content.getSystemService
+import androidx.core.net.toUri
+import com.alhuda.app.R
+import com.alhuda.app.core.data.audio.AdhanPreviewPlaybackService.Companion.playingId
+import com.alhuda.app.core.data.locale.withAppLocale
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+
+class AdhanPreviewPlaybackService :
+    Service(),
+    MediaPlayer.OnPreparedListener,
+    MediaPlayer.OnCompletionListener,
+    MediaPlayer.OnErrorListener,
+    AudioManager.OnAudioFocusChangeListener {
+
+    companion object {
+        private const val ACTION_PLAY = "com.alhuda.app.action.PREVIEW_PLAY"
+        private const val ACTION_STOP = "com.alhuda.app.action.PREVIEW_STOP"
+        private const val ACTION_SET_VOLUME = "com.alhuda.app.action.PREVIEW_SET_VOLUME"
+        private const val EXTRA_URI = "uri"
+        private const val EXTRA_ID = "id"
+        private const val EXTRA_LABEL = "label"
+        private const val EXTRA_LOOP = "loop"
+        private const val EXTRA_VOLUME_PERCENT = "volume_percent"
+
+        private const val CHANNEL_ID = "adhan_preview_playback"
+        private const val NOTIFICATION_ID = 0xADA1
+
+        private val _playingId = MutableStateFlow<String?>(null)
+
+        val playingId: StateFlow<String?> = _playingId.asStateFlow()
+
+        fun play(
+            context: Context,
+            uri: Uri,
+            id: String,
+            label: String,
+            loop: Boolean = false,
+            volumePercent: Int = -1,
+        ) {
+            val intent = Intent(context, AdhanPreviewPlaybackService::class.java).apply {
+                action = ACTION_PLAY
+                putExtra(EXTRA_URI, uri.toString())
+                putExtra(EXTRA_ID, id)
+                putExtra(EXTRA_LABEL, label)
+                putExtra(EXTRA_LOOP, loop)
+                putExtra(EXTRA_VOLUME_PERCENT, volumePercent)
+            }
+            ContextCompat.startForegroundService(context, intent)
+        }
+
+        fun setVolume(
+            context: Context,
+            volumePercent: Int,
+        ) {
+            val intent = Intent(context, AdhanPreviewPlaybackService::class.java).apply {
+                action = ACTION_SET_VOLUME
+                putExtra(EXTRA_VOLUME_PERCENT, volumePercent)
+            }
+            context.startService(intent)
+        }
+
+        fun stop(context: Context) {
+            val intent = Intent(context, AdhanPreviewPlaybackService::class.java).apply {
+                action = ACTION_STOP
+            }
+
+            context.startService(intent)
+        }
+    }
+
+    private var player: MediaPlayer? = null
+    private var focusRequest: AudioFocusRequest? = null
+
+    private var volumePercent = -1
+
+    private var savedStreamVolume = -1
+
+    private var telephonyCallback: TelephonyCallback? = null
+    private var phoneStateListener: PhoneStateListener? = null
+
+    private val audioManager: AudioManager? by lazy { getSystemService() }
+    private val telephonyManager: TelephonyManager? by lazy { getSystemService() }
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onStartCommand(
+        intent: Intent?,
+        flags: Int,
+        startId: Int,
+    ): Int {
+        when (intent?.action) {
+            ACTION_PLAY -> {
+                val uri = intent.getStringExtra(EXTRA_URI)?.toUri()
+                val id = intent.getStringExtra(EXTRA_ID)
+                val label = intent.getStringExtra(EXTRA_LABEL).orEmpty()
+                val loop = intent.getBooleanExtra(EXTRA_LOOP, false)
+                volumePercent = intent.getIntExtra(EXTRA_VOLUME_PERCENT, -1)
+                if (uri != null && id != null) {
+                    startPlayback(uri, id, label, loop)
+                } else {
+                    cleanupAndStop()
+                }
+            }
+
+            ACTION_SET_VOLUME -> {
+                volumePercent = intent.getIntExtra(EXTRA_VOLUME_PERCENT, -1)
+
+                if (player != null) applyStreamVolume() else cleanupAndStop()
+            }
+
+            else -> cleanupAndStop()
+        }
+        return START_NOT_STICKY
+    }
+
+    private fun applyStreamVolume() {
+        if (volumePercent !in 0..100) return
+        val am = audioManager ?: return
+        if (savedStreamVolume == -1) {
+            savedStreamVolume = runCatching { am.getStreamVolume(AudioManager.STREAM_MUSIC) }.getOrDefault(-1)
+        }
+        val max = runCatching { am.getStreamMaxVolume(AudioManager.STREAM_MUSIC) }.getOrDefault(0)
+        if (max <= 0) return
+        runCatching { am.setStreamVolume(AudioManager.STREAM_MUSIC, (volumePercent * max + 50) / 100, 0) }
+    }
+
+    private fun restoreStreamVolume() {
+        if (savedStreamVolume < 0) return
+        runCatching { audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, savedStreamVolume, 0) }
+        savedStreamVolume = -1
+    }
+
+    private fun startPlayback(
+        uri: Uri,
+        id: String,
+        label: String,
+        loop: Boolean,
+    ) {
+
+        startForeground(NOTIFICATION_ID, buildNotification(label))
+
+        if (isCallActive()) {
+            cleanupAndStop()
+            return
+        }
+        if (!requestAudioFocus()) {
+            cleanupAndStop()
+            return
+        }
+        registerCallStateListener()
+
+        player?.release()
+        player = MediaPlayer().apply {
+            setWakeMode(applicationContext, PowerManager.PARTIAL_WAKE_LOCK)
+            setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .build(),
+            )
+            setOnPreparedListener(this@AdhanPreviewPlaybackService)
+            setOnCompletionListener(this@AdhanPreviewPlaybackService)
+            setOnErrorListener(this@AdhanPreviewPlaybackService)
+            isLooping = loop
+            val ok = runCatching {
+                setDataSource(applicationContext, uri)
+                prepareAsync()
+            }.isSuccess
+            if (!ok) {
+                cleanupAndStop()
+                return
+            }
+        }
+        _playingId.value = id
+    }
+
+    override fun onPrepared(mp: MediaPlayer) {
+        applyStreamVolume()
+        runCatching { mp.start() }
+    }
+
+    override fun onCompletion(mp: MediaPlayer) = cleanupAndStop()
+
+    override fun onError(
+        mp: MediaPlayer,
+        what: Int,
+        extra: Int,
+    ): Boolean {
+        cleanupAndStop()
+        return true
+    }
+
+    override fun onAudioFocusChange(focusChange: Int) {
+
+        if (focusChange <= 0) cleanupAndStop()
+    }
+
+    private fun requestAudioFocus(): Boolean {
+        val am = audioManager ?: return false
+        val attributes = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_MEDIA)
+            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+            .build()
+        val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+            .setAudioAttributes(attributes)
+            .setOnAudioFocusChangeListener(this)
+            .build()
+        focusRequest = request
+        return am.requestAudioFocus(request) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+    }
+
+    private fun abandonAudioFocus() {
+        val am = audioManager ?: return
+        focusRequest?.let { am.abandonAudioFocusRequest(it) }
+        focusRequest = null
+    }
+
+    private fun hasPhoneStatePermission(): Boolean =
+        ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) ==
+            PackageManager.PERMISSION_GRANTED
+
+    @SuppressLint("MissingPermission")
+    private fun isCallActive(): Boolean {
+        if (!hasPhoneStatePermission()) return false
+        val tm = telephonyManager ?: return false
+
+        @Suppress("DEPRECATION")
+        val state = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) tm.callStateForSubscription else tm.callState
+        return state != TelephonyManager.CALL_STATE_IDLE
+    }
+
+    private fun registerCallStateListener() {
+        if (!hasPhoneStatePermission()) return
+        val tm = telephonyManager ?: return
+
+        unregisterCallStateListener()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val callback = object : TelephonyCallback(), TelephonyCallback.CallStateListener {
+                override fun onCallStateChanged(state: Int) = onCallState(state)
+            }
+            telephonyCallback = callback
+            runCatching { tm.registerTelephonyCallback(mainExecutor, callback) }
+        } else {
+            @Suppress("DEPRECATION")
+            val listener = object : PhoneStateListener() {
+                @Deprecated("Deprecated in Java")
+                override fun onCallStateChanged(
+                    state: Int,
+                    phoneNumber: String?,
+                ) = onCallState(state)
+            }
+            phoneStateListener = listener
+            @Suppress("DEPRECATION")
+            runCatching { tm.listen(listener, PhoneStateListener.LISTEN_CALL_STATE) }
+        }
+    }
+
+    private fun unregisterCallStateListener() {
+        val tm = telephonyManager ?: return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            telephonyCallback?.let { tm.unregisterTelephonyCallback(it) }
+            telephonyCallback = null
+        } else {
+            @Suppress("DEPRECATION")
+            phoneStateListener?.let { tm.listen(it, PhoneStateListener.LISTEN_NONE) }
+            phoneStateListener = null
+        }
+    }
+
+    private fun onCallState(state: Int) {
+        if (state != TelephonyManager.CALL_STATE_IDLE) cleanupAndStop()
+    }
+
+    private fun buildNotification(label: String): android.app.Notification {
+
+        val localized = withAppLocale()
+        ensureChannel(localized)
+        val stopIntent = PendingIntent.getService(
+            this,
+            0,
+            Intent(this, AdhanPreviewPlaybackService::class.java).setAction(ACTION_STOP),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.drawable.monochrome_notif)
+            .setContentTitle(localized.getString(R.string.adhan_preview_playing))
+            .setContentText(label)
+            .setOngoing(true)
+            .setSilent(true)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
+            .addAction(R.drawable.outline_stop_24, localized.getString(R.string.stop), stopIntent)
+            .build()
+    }
+
+    private fun ensureChannel(localized: Context) {
+        val channel = NotificationChannelCompat.Builder(
+            CHANNEL_ID,
+            NotificationManagerCompat.IMPORTANCE_LOW,
+        )
+            .setName(localized.getString(R.string.adhan_preview_channel_name))
+            .setShowBadge(false)
+            .build()
+        NotificationManagerCompat.from(this).createNotificationChannel(channel)
+    }
+
+    private fun cleanupAndStop() {
+        player?.let { mp ->
+            runCatching { mp.reset() }
+            mp.release()
+        }
+        player = null
+
+        restoreStreamVolume()
+        abandonAudioFocus()
+        unregisterCallStateListener()
+        _playingId.value = null
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
+
+    override fun onDestroy() {
+        cleanupAndStop()
+        super.onDestroy()
+    }
+}

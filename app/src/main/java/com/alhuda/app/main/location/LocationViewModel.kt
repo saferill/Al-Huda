@@ -1,0 +1,299 @@
+package com.alhuda.app.main.location
+
+import android.content.Context
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import androidx.work.Constraints
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
+import com.alhuda.app.core.domain.model.calculation.CalculationLocationDetail
+import com.alhuda.app.core.domain.model.favorite_location.StaticFavoriteLocation
+import com.alhuda.app.core.domain.model.favorite_location.TravelingFavoriteLocation
+import com.alhuda.app.core.domain.model.geo.CityGeoInfo
+import com.alhuda.app.core.domain.model.geo.CountryGeoInfo
+import com.alhuda.app.core.domain.repository.CalculationSettingsRepository
+import com.alhuda.app.core.domain.repository.CustomWidgetConfigRepository
+import com.alhuda.app.core.domain.repository.FavoriteLocationsRepository
+import com.alhuda.app.core.domain.repository.GeoInfoRepository
+import com.alhuda.app.core.domain.repository.SettingsRepository
+import com.alhuda.app.main.location.components.NewLocationDialogUiState
+import com.alhuda.app.worker.TRAVEL_MODE_WORK_NAME
+import com.alhuda.app.worker.TravelModeWorker
+import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import java.util.concurrent.TimeUnit
+import javax.inject.Inject
+import kotlin.time.Instant
+
+@HiltViewModel
+class LocationViewModel
+@Inject constructor(
+    private val favoriteLocationsRepository: FavoriteLocationsRepository,
+    private val calculationSettingsRepository: CalculationSettingsRepository,
+    private val settingsRepository: SettingsRepository,
+    private val geoInfoRepository: GeoInfoRepository,
+    private val customWidgetConfigRepository: CustomWidgetConfigRepository,
+    @param:ApplicationContext private val context: Context,
+) : ViewModel() {
+    private val _uiState = MutableStateFlow(LocationUiState())
+    val uiState = _uiState.asStateFlow()
+
+    init {
+        collectSettings()
+        collectTravelWorkInfo()
+    }
+
+    fun onAction(action: LocationUiAction) {
+        when (action) {
+            is LocationUiAction.OnNewLocationClick -> onNewLocationClick()
+            is LocationUiAction.OnNewLocationDismiss -> onNewLocationDismiss()
+            is LocationUiAction.OnNewLocationConfirm -> onNewLocationConfirm(action.state)
+            is LocationUiAction.OnMoveLocation -> onMoveLocation(action.fromIndex, action.toIndex)
+            is LocationUiAction.OnSetAsDefaultClick -> onSetAsDefault(action.locationId)
+            is LocationUiAction.OnEditLabelClick -> onEditLabelClick(action.locationId)
+            is LocationUiAction.OnEditLabelChange -> onEditLabelChange(action.value)
+            is LocationUiAction.OnEditLabelConfirm -> onEditLabelConfirm()
+            is LocationUiAction.OnEditLabelDismiss -> onEditLabelDismiss()
+            is LocationUiAction.OnDeleteLocationClick -> onDeleteLocation(action.locationId)
+            is LocationUiAction.OnDeleteLocationDismiss -> onDeleteLocationDismiss()
+            is LocationUiAction.OnDeleteLocationConfirm -> onDeleteLocationConfirm(action.locationId)
+            is LocationUiAction.OnTravelModeChange -> onTravelModeChange(action.value)
+        }
+    }
+
+    suspend fun getCountries(): List<CountryGeoInfo> = geoInfoRepository.getCountries()
+    suspend fun getCities(countryCode: String): List<CityGeoInfo> = geoInfoRepository.getCities(countryCode)
+
+    private fun onMoveLocation(
+        fromIndex: Int,
+        toIndex: Int,
+    ) {
+        if (fromIndex == toIndex) return
+
+        viewModelScope.launch {
+            favoriteLocationsRepository.update { current ->
+                if (fromIndex !in current.indices || toIndex !in current.indices) return@update current
+                val mutable = current.toMutableList()
+                val item = mutable.removeAt(fromIndex)
+                mutable.add(toIndex, item)
+                mutable
+            }
+        }
+    }
+
+    private fun onNewLocationClick() {
+        _uiState.update { state ->
+            state.copy(isNewLocationDialogOpen = true)
+        }
+    }
+
+    private fun onNewLocationDismiss() {
+        _uiState.update { state ->
+            state.copy(isNewLocationDialogOpen = false)
+        }
+    }
+
+    private fun onNewLocationConfirm(state: NewLocationDialogUiState) {
+        _uiState.update { it.copy(isNewLocationDialogOpen = false) }
+        val parsedLat = state.latitude.toDoubleOrNull() ?: return
+        val parsedLong = state.longitude.toDoubleOrNull() ?: return
+        viewModelScope.launch {
+            val newLocationId = System.currentTimeMillis().toString() + "$parsedLat"
+            favoriteLocationsRepository.update {
+                it + StaticFavoriteLocation(
+                    id = newLocationId,
+                    locationDetail = CalculationLocationDetail(
+                        lat = parsedLat,
+                        long = parsedLong,
+                        city = state.selectedCity,
+                        country = state.selectedCountry,
+                        label = state.label,
+                    ),
+                )
+            }
+            if (calculationSettingsRepository.fetch().locationId == null) {
+                calculationSettingsRepository.update { it.copy(locationId = newLocationId) }
+            }
+        }
+    }
+
+    private fun onSetAsDefault(locationId: String) {
+        viewModelScope.launch {
+            calculationSettingsRepository.update { it.copy(locationId = locationId) }
+
+            if (locationId != TravelingFavoriteLocation.LOCATION_ID) {
+                WorkManager.getInstance(context).cancelUniqueWork(TRAVEL_MODE_WORK_NAME)
+            }
+        }
+    }
+
+    private fun onEditLabelClick(locationId: String) {
+        _uiState.update { state ->
+            val location = state.locations.firstOrNull { it.id == locationId } ?: return@update state
+            state.copy(editLabelDraft = EditLocationLabelDraft(locationId, location.locationDetail.label.orEmpty()))
+        }
+    }
+
+    private fun onEditLabelChange(value: String) {
+        _uiState.update { state -> state.copy(editLabelDraft = state.editLabelDraft?.copy(label = value)) }
+    }
+
+    private fun onEditLabelDismiss() {
+        _uiState.update { it.copy(editLabelDraft = null) }
+    }
+
+    private fun onEditLabelConfirm() {
+        val draft = _uiState.value.editLabelDraft ?: return
+        _uiState.update { it.copy(editLabelDraft = null) }
+
+        val newLabel = draft.label.trim().ifBlank { null }
+        viewModelScope.launch {
+            favoriteLocationsRepository.update { current ->
+                current.map { location ->
+                    if (location.id == draft.id && location is StaticFavoriteLocation) {
+                        location.copy(locationDetail = location.locationDetail.copy(label = newLabel))
+                    } else {
+                        location
+                    }
+                }
+            }
+        }
+    }
+
+    private fun onDeleteLocation(locationId: String) {
+        _uiState.update { state ->
+            val deleting = state.locations.firstOrNull { it.id == locationId } ?: return@update state
+            state.copy(deleteLocationDialogLocation = deleting)
+        }
+    }
+
+    private fun onDeleteLocationDismiss() {
+        _uiState.update { it.copy(deleteLocationDialogLocation = null) }
+    }
+
+    private fun onDeleteLocationConfirm(locationId: String) {
+        _uiState.update { it.copy(deleteLocationDialogLocation = null) }
+        viewModelScope.launch {
+            if (locationId == calculationSettingsRepository.fetch().locationId) {
+                val nextLocationId = favoriteLocationsRepository.fetch().firstOrNull {
+                    it !is TravelingFavoriteLocation &&
+                        it.id != locationId
+                }?.id
+                calculationSettingsRepository.update {
+                    it.copy(
+                        locationId = nextLocationId,
+                    )
+                }
+            }
+            if (settingsRepository.fetch().locationIdBeforeTravel == locationId) {
+                settingsRepository.update { it.copy(locationIdBeforeTravel = null) }
+            }
+            favoriteLocationsRepository.update { current ->
+                current.filterNot { it.id == locationId }
+            }
+
+            customWidgetConfigRepository.update { config ->
+                if (locationId in config.locationIds) {
+                    config.copy(locationIds = config.locationIds.filterNot { it == locationId })
+                } else {
+                    config
+                }
+            }
+        }
+    }
+
+    private fun onTravelModeChange(value: Boolean) {
+        viewModelScope.launch {
+            favoriteLocationsRepository.update { locations ->
+                if (value && locations.indexOfFirst { it is TravelingFavoriteLocation } == -1) {
+
+                    listOf(TravelingFavoriteLocation(CalculationLocationDetail(0.0, 0.0))) + locations
+                } else {
+                    locations
+                }
+            }
+            val nextLocationId = if (value) {
+                val currentLocationId = calculationSettingsRepository.fetch().locationId
+                if (currentLocationId != null) {
+                    settingsRepository.update { it.copy(locationIdBeforeTravel = currentLocationId) }
+                }
+                TravelingFavoriteLocation.LOCATION_ID
+            } else {
+                settingsRepository.fetch().locationIdBeforeTravel ?: (
+                    favoriteLocationsRepository.fetch()
+                        .firstOrNull { it is StaticFavoriteLocation }?.id
+                    )
+            }
+            calculationSettingsRepository.update { calcSettings ->
+                calcSettings.copy(locationId = nextLocationId)
+            }
+
+            if (value) {
+                val travelModeWorkRequest =
+                    PeriodicWorkRequestBuilder<TravelModeWorker>(15, TimeUnit.MINUTES, 20, TimeUnit.MINUTES)
+                        .setConstraints(Constraints.Builder().setRequiresBatteryNotLow(true).build())
+                        .setInitialDelay(
+                            0,
+                            TimeUnit.SECONDS,
+                        )
+                        .build()
+                WorkManager.getInstance(context)
+                    .enqueueUniquePeriodicWork(
+                        TRAVEL_MODE_WORK_NAME,
+                        ExistingPeriodicWorkPolicy.REPLACE,
+                        travelModeWorkRequest,
+                    )
+            } else {
+                WorkManager.getInstance(context).cancelUniqueWork(TRAVEL_MODE_WORK_NAME)
+            }
+        }
+    }
+
+    private fun collectSettings() {
+        viewModelScope.launch {
+            combine(
+                settingsRepository.data.map {
+                    it.travelModeLastUpdateMillis
+                },
+                calculationSettingsRepository.data,
+                favoriteLocationsRepository.data,
+            ) {
+                    lastUpdateMillis,
+                    calcSettings,
+                    locations,
+                ->
+                _uiState.update { state ->
+                    state.copy(
+                        locations = locations,
+                        selectedLocationId = calcSettings.locationId,
+                        travelMode =
+                            locations.firstOrNull { loc -> loc is TravelingFavoriteLocation }?.id?.let { it == calcSettings.locationId } ==
+                                true,
+                        travelingModeLastUpdate = lastUpdateMillis?.let { Instant.fromEpochMilliseconds(it) },
+                    )
+                }
+            }.collect()
+        }
+    }
+
+    private fun collectTravelWorkInfo() {
+        viewModelScope.launch {
+            WorkManager.getInstance(context).getWorkInfosForUniqueWorkFlow(TRAVEL_MODE_WORK_NAME).collect { workInfoList ->
+                if (workInfoList.isNotEmpty()) {
+                    _uiState.update { it.copy(travelModeWorking = workInfoList[0].state == WorkInfo.State.RUNNING) }
+                } else {
+                    _uiState.update { it.copy(travelModeWorking = false) }
+                }
+            }
+        }
+    }
+}

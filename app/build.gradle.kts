@@ -1,0 +1,142 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
+plugins {
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.dagger.hilt)
+    alias(libs.plugins.jetbrains.kotlin.serialization)
+}
+
+android {
+    namespace = "com.alhuda.app"
+    compileSdk { version = release(37) }
+
+    defaultConfig {
+        applicationId = "com.alhuda.app"
+        minSdk = 26
+        compileSdk = 37
+        targetSdk = 36
+        versionCode = 1
+        versionName = "1.0.0"
+
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    buildTypes {
+        debug {
+            applicationIdSuffix = ".debug"
+        }
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        }
+    }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
+    }
+
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
+
+    androidResources { generateLocaleConfig = true }
+
+    testOptions { unitTests { isIncludeAndroidResources = true } }
+}
+
+androidComponents {
+    onVariants { variant ->
+        variant.outputs.forEach { output ->
+            val base = output.versionCode.orNull ?: 0
+            output.versionCode.set(base * 1000)
+        }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_11)
+    }
+}
+
+ksp {
+    arg("appfunctions:aggregateAppFunctions", "true")
+}
+
+composeCompiler {
+    stabilityConfigurationFiles.add(rootProject.layout.projectDirectory.file("compose_stability.conf"))
+}
+
+val banMutableCollectionTypes = tasks.register("banMutableCollectionTypes") {
+    group = "verification"
+    description = "Fails the build if mutable collection types are exposed (breaks Compose stability assumptions)."
+    val sources = fileTree("src/main/java") { include("**/*.kt") }
+    inputs.files(sources)
+    val banned = Regex("""\bMutable(List|Map|Set)\s*<""")
+    doLast {
+        val violations = sources.files.flatMap { file ->
+            file.readLines().mapIndexedNotNull { index, line ->
+                if (banned.containsMatchIn(line) && "//noban" !in line) {
+                    "${file.relativeTo(projectDir)}:${index + 1}: ${line.trim()}"
+                } else {
+                    null
+                }
+            }
+        }
+        if (violations.isNotEmpty()) {
+            throw GradleException(
+                "Mutable collection types are banned (Compose stability). " +
+                    "Expose read-only List/Map/Set, or add //noban:\n" + violations.joinToString("\n"),
+            )
+        }
+    }
+}
+
+tasks.named("check") { dependsOn(banMutableCollectionTypes) }
+
+dependencies {
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.process)
+    implementation(libs.androidx.activity.compose)
+    implementation(platform(libs.androidx.compose.bom))
+    implementation(libs.androidx.compose.ui)
+    implementation(libs.androidx.compose.ui.graphics)
+    implementation(libs.androidx.compose.ui.tooling.preview)
+    implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.appcompat)
+    implementation(libs.androidx.core.splashscreen)
+    implementation(libs.dagger.hilt.android)
+    implementation(libs.androidx.hilt.navigation)
+    implementation(libs.androidx.work)
+    implementation(libs.androidx.hilt.work)
+    ksp(libs.dagger.hilt.compiler)
+    ksp(libs.androidx.hilt.compiler)
+
+    implementation(libs.androidx.navigation3.ui)
+    implementation(libs.androidx.navigation3.runtime)
+    implementation(libs.androidx.lifecycle.viewmodel.navigation3)
+    implementation(libs.kotlinx.serialization.json)
+
+    implementation(libs.tencent.mmkv)
+
+    implementation(libs.batoulapps.adhan)
+
+    implementation(libs.androidx.appfunctions)
+    ksp(libs.androidx.appfunctions.compiler)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.mockito.core)
+    testImplementation(libs.mockito.kotlin)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.robolectric)
+    androidTestImplementation(libs.androidx.junit)
+    androidTestImplementation(libs.androidx.espresso.core)
+    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    debugImplementation(libs.androidx.compose.ui.tooling)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
+}

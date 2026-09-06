@@ -1,0 +1,315 @@
+package com.alhuda.app.core.data.model.old
+
+import com.alhuda.app.core.domain.model.calculation.CalculationAdjustments
+import com.alhuda.app.core.domain.model.calculation.CalculationLocationDetail
+import com.alhuda.app.core.domain.model.calculation.CalculationSettings
+import com.alhuda.app.core.domain.model.favorite_location.FavoriteLocation
+import com.alhuda.app.core.domain.model.favorite_location.StaticFavoriteLocation
+import com.alhuda.app.core.domain.model.geo.CityGeoInfo
+import com.alhuda.app.core.domain.model.geo.CountryGeoInfo
+import com.alhuda.app.core.util.serialization.EmptyStringAsNullSerializer
+import io.github.meypod.adhan_kotlin.CalculationMethod
+import io.github.meypod.adhan_kotlin.CalculationParameters
+import io.github.meypod.adhan_kotlin.HighLatitudeRule
+import io.github.meypod.adhan_kotlin.Madhab
+import io.github.meypod.adhan_kotlin.MidnightMethod
+import io.github.meypod.adhan_kotlin.PolarCircleResolution
+import io.github.meypod.adhan_kotlin.PrayerAdjustments
+import io.github.meypod.adhan_kotlin.model.Rounding
+import io.github.meypod.adhan_kotlin.model.Shafaq
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.JsonDecoder
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonEncoder
+import kotlinx.serialization.json.JsonPrimitive
+
+@Serializable
+data class OldCalculationSettings(
+    val state: OldCalculationSettingsState,
+    val version: Int,
+)
+
+private val legacyCalculationMethodKeys = mapOf(
+    "Custom" to CalculationMethod.OTHER,
+    "MoonsightingCommittee" to CalculationMethod.MOON_SIGHTING_COMMITTEE,
+    "MuslimWorldLeague" to CalculationMethod.MUSLIM_WORLD_LEAGUE,
+    "Egyptian" to CalculationMethod.EGYPTIAN,
+    "Karachi" to CalculationMethod.KARACHI,
+    "UmmAlQura" to CalculationMethod.UMM_AL_QURA,
+    "NorthAmerica" to CalculationMethod.NORTH_AMERICA,
+    "Gulf" to CalculationMethod.GULF,
+    "Dubai" to CalculationMethod.DUBAI,
+    "Kuwait" to CalculationMethod.KUWAIT,
+    "Qatar" to CalculationMethod.QATAR,
+    "Singapore" to CalculationMethod.SINGAPORE,
+    "France" to CalculationMethod.FRANCE,
+    "France15" to CalculationMethod.FRANCE15,
+    "France18" to CalculationMethod.FRANCE18,
+    "Turkey" to CalculationMethod.TURKEY,
+    "Russia" to CalculationMethod.RUSSIA,
+    "Jafari" to CalculationMethod.JAFARI,
+    "Tehran" to CalculationMethod.TEHRAN,
+    "Kemenag" to CalculationMethod.KEMENAG,
+    "Algeria" to CalculationMethod.ALGERIA,
+    "Brunei" to CalculationMethod.BRUNEI,
+    "Tunisia" to CalculationMethod.TUNISIA,
+)
+
+@Serializable
+data class OldCalculationSettingsState(
+    @Deprecated("is replaced by LOCATION")
+    @SerialName("LOCATION_LAT")
+    val locationLat: Double? = null,
+    @Deprecated("is replaced by LOCATION")
+    @SerialName("LOCATION_LONG")
+    val locationLong: Double? = null,
+    @SerialName("LOCATION") val location: OldCalcLocation? = null,
+    @SerialName("CALCULATION_METHOD_KEY")
+    @Serializable(with = EmptyStringAsNullSerializer::class)
+    val calculationMethodKey: String? = null,
+    @SerialName("HIGH_LATITUDE_RULE") val highLatitudeRule: String? = null,
+    @SerialName("ASR_CALCULATION")
+    @Serializable(with = EmptyStringAsNullSerializer::class)
+    val asrCalculation: String? = null,
+    @SerialName("SHAFAQ")
+    @Serializable(with = EmptyStringAsNullSerializer::class)
+    val shafaq: String? = null,
+    @SerialName("POLAR_RESOLUTION")
+    @Serializable(with = EmptyStringAsNullSerializer::class)
+    val polarResolution: String? = null,
+    @SerialName("MIDNIGHT_METHOD") val midnightMethod: MidnightMethod,
+    @SerialName("ROUNDING_METHOD")
+    val roundingMethod: OldRoundingMethod = OldRoundingMethod.NEAREST,
+    @SerialName("FAJR_ANGLE_OVERRIDE") val fajrAngleOverride: Double? = null,
+    @SerialName("ISHA_ANGLE_OVERRIDE") val ishaAngleOverride: Double? = null,
+    @SerialName("MAGHRIB_ANGLE_OVERRIDE") val maghribAngleOverride: Double? = null,
+    @SerialName("ISHA_INTERVAL_OVERRIDE") val ishaIntervalOverride: Int? = null,
+    @SerialName("FAJR_ADJUSTMENT") val fajrAdjustment: Int,
+    @SerialName("SUNRISE_ADJUSTMENT") val sunriseAdjustment: Int,
+    @SerialName("DHUHR_ADJUSTMENT") val dhuhrAdjustment: Int,
+    @SerialName("ASR_ADJUSTMENT") val asrAdjustment: Int,
+    @SerialName("SUNSET_ADJUSTMENT") val sunsetAdjustment: Int,
+    @SerialName("MAGHRIB_ADJUSTMENT") val maghribAdjustment: Int,
+    @SerialName("ISHA_ADJUSTMENT") val ishaAdjustment: Int,
+    @SerialName("MIDNIGHT_ADJUSTMENT") val midnightAdjustment: Int,
+    @SerialName("HIJRI_DATE_ADJUSTMENT") val hijriDateAdjustment: Int,
+) {
+    fun getCalculationParameters(): CalculationParameters {
+        val method =
+            this.calculationMethodKey?.let { key ->
+                legacyCalculationMethodKeys[key] ?: CalculationMethod.OTHER
+            } ?: CalculationMethod.OTHER
+
+        val base = method.parameters
+
+        val madhab =
+            when (this.asrCalculation?.lowercase()) {
+                "hanafi" -> Madhab.HANAFI
+                "shafi" -> Madhab.SHAFI
+                else -> base.madhab
+            }
+
+        val highLatitudeRule =
+            when (this.highLatitudeRule?.lowercase()) {
+                "middleofthenight" -> HighLatitudeRule.MIDDLE_OF_THE_NIGHT
+                "seventhofthenight" -> HighLatitudeRule.SEVENTH_OF_THE_NIGHT
+                "twilightangle" -> HighLatitudeRule.TWILIGHT_ANGLE
+                else -> base.highLatitudeRule
+            }
+
+        val prayerAdjustments =
+            PrayerAdjustments(
+                fajr = this.fajrAdjustment,
+                sunrise = this.sunriseAdjustment,
+                dhuhr = this.dhuhrAdjustment,
+                asr = this.asrAdjustment,
+                sunset = this.sunsetAdjustment,
+                maghrib = this.maghribAdjustment,
+                isha = this.ishaAdjustment,
+            )
+
+        val rounding = this.roundingMethod.toRounding()
+
+        val shafaq =
+            when (this.shafaq?.lowercase()) {
+                "general" -> Shafaq.GENERAL
+                "ahmer" -> Shafaq.AHMER
+                "abyad" -> Shafaq.ABYAD
+                else -> base.shafaq
+            }
+
+        val polarCircleResolution =
+            when (this.polarResolution?.lowercase()) {
+                "aqrabbalad" -> PolarCircleResolution.AqrabBalad
+                "aqrabyaum" -> PolarCircleResolution.AqrabYaum
+                else -> base.polarCircleResolution
+            }
+
+        return base.copy(
+            fajrAngle = this.fajrAngleOverride ?: base.fajrAngle,
+            ishaAngle = this.ishaAngleOverride ?: base.ishaAngle,
+            ishaInterval = this.ishaIntervalOverride ?: base.ishaInterval,
+            maghribAngle = this.maghribAngleOverride ?: base.maghribAngle,
+            madhab = madhab,
+            highLatitudeRule = highLatitudeRule,
+            prayerAdjustments = prayerAdjustments,
+            rounding = rounding,
+            shafaq = shafaq,
+            polarCircleResolution = polarCircleResolution,
+        )
+    }
+
+    fun toCalculationSettings() =
+        CalculationSettings(
+            locationId = "default",
+            parameters = this.getCalculationParameters(),
+            calculationAdjustments = CalculationAdjustments(
+                fajr = this.fajrAdjustment,
+                sunrise = this.sunriseAdjustment,
+                dhuhr = this.dhuhrAdjustment,
+                asr = this.asrAdjustment,
+                maghrib = this.maghribAdjustment,
+                sunset = this.sunsetAdjustment,
+                isha = this.ishaAdjustment,
+                midnight = this.midnightAdjustment,
+                tahajjud = 0,
+                hijriDate = this.hijriDateAdjustment,
+            ),
+            midnightMethod = this.midnightMethod,
+        )
+}
+
+@Serializable(with = OldRoundingMethodSerializer::class)
+enum class OldRoundingMethod {
+    NEAREST,
+    UP,
+    NONE,
+}
+
+fun OldRoundingMethod?.toRounding() =
+    when (this) {
+        OldRoundingMethod.NEAREST -> Rounding.NEAREST
+        OldRoundingMethod.UP -> Rounding.UP
+        OldRoundingMethod.NONE -> Rounding.NONE
+        else -> Rounding.NEAREST
+    }
+
+@Serializable
+object OldRoundingMethodSerializer : KSerializer<OldRoundingMethod> {
+    private val elementSerializer = JsonElement.serializer()
+
+    override val descriptor: SerialDescriptor = elementSerializer.descriptor
+
+    override fun deserialize(decoder: Decoder): OldRoundingMethod {
+        val jsonDecoder =
+            decoder as? JsonDecoder
+                ?: throw SerializationException("OldRoundingMethod can be deserialized only by JSON")
+
+        return when (val elem = jsonDecoder.decodeSerializableValue(elementSerializer)) {
+            is JsonPrimitive -> {
+                if (elem.isString) {
+                    val name = elem.content
+                    try {
+                        OldRoundingMethod.valueOf(name)
+                    } catch (_: Exception) {
+                        OldRoundingMethod.NEAREST
+                    }
+                } else {
+                    val num =
+                        elem.content.toIntOrNull()
+                            ?: throw SerializationException("Unsupported primitive for OldRoundingMethod: $elem")
+                    OldRoundingMethod.entries.getOrNull(num)
+                        ?: throw SerializationException("Invalid ordinal for OldRoundingMethod: $num")
+                }
+            }
+
+            else -> {
+                throw SerializationException("Unsupported JSON for OldRoundingMethod: $elem")
+            }
+        }
+    }
+
+    override fun serialize(
+        encoder: Encoder,
+        value: OldRoundingMethod,
+    ) {
+        val jsonEncoder =
+            encoder as? JsonEncoder
+                ?: throw SerializationException("OldRoundingMethod can be serialized only by JSON")
+
+        val outElem: JsonElement = JsonPrimitive(value.name)
+
+        jsonEncoder.encodeSerializableValue(elementSerializer, outElem)
+    }
+}
+
+@Serializable
+data class OldCalcLocation(
+    val lat: Double? = null,
+    val long: Double? = null,
+    val city: OldCityInfo? = null,
+    val country: OldCountryInfo? = null,
+    val label: String? = null,
+) {
+    fun toFavoriteLocation(): FavoriteLocation? =
+        if (this.lat != null && this.long != null) {
+            StaticFavoriteLocation(
+                "default",
+                CalculationLocationDetail(
+                    lat = this.lat,
+                    long = this.long,
+                    city = this.city?.toCityGeoInfo(),
+                    country = this.country?.toCountryGeoInfo(),
+                    label = this.label,
+                ),
+            )
+        } else {
+            null
+        }
+}
+
+@Serializable
+data class OldCityInfo(
+    val name: String,
+    val names: String,
+    val lat: String,
+    val lng: String,
+    val country: String,
+
+    @Serializable(with = EmptyStringAsNullSerializer::class) val selectedName: String?,
+) {
+    fun toCityGeoInfo(): CityGeoInfo =
+        CityGeoInfo(
+            name = this.name,
+            names = this.names,
+            lat = this.lat.toDoubleOrNull() ?: 0.0,
+            long = this.lng.toDoubleOrNull() ?: 0.0,
+            country = this.country,
+            selectedName = this.selectedName,
+        )
+}
+
+@Serializable
+data class OldCountryInfo(
+    val code: String,
+
+    val name: String,
+
+    val names: String,
+
+    @Serializable(with = EmptyStringAsNullSerializer::class) val selectedName: String? = null,
+) {
+    fun toCountryGeoInfo(): CountryGeoInfo =
+        CountryGeoInfo(
+            code = this.code,
+            name = this.name,
+            names = this.names,
+            selectedName = this.selectedName,
+        )
+}
