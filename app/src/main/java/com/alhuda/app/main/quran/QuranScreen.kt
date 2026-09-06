@@ -18,11 +18,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -36,8 +33,8 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
@@ -53,6 +50,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.alhuda.app.R
+import com.alhuda.app.core.presentation.components.ACard
 import com.alhuda.app.core.presentation.components.ScreenScaffold
 import com.alhuda.app.core.presentation.navigation.Route
 import com.alhuda.app.main.quran.model.JuzInfo
@@ -222,14 +220,14 @@ fun QuranScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 16.dp),
+                    .padding(horizontal = dimensionResource(R.dimen.page_padding)),
             ) {
                 if (uiState.bookmark != null && uiState.searchQuery.isEmpty()) {
                     LastReadCard(
                         bookmark = uiState.bookmark,
                         onClick = { onAction(QuranUiAction.OnBookmarkClick(uiState.bookmark)) },
                     )
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(dimensionResource(R.dimen.element_padding)))
                 }
 
                 OutlinedTextField(
@@ -252,7 +250,7 @@ fun QuranScreen(
                             }
                         }
                     },
-                    shape = RoundedCornerShape(16.dp),
+                    shape = MaterialTheme.shapes.medium,
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = MaterialTheme.colorScheme.primary,
                         unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
@@ -260,9 +258,9 @@ fun QuranScreen(
                     modifier = Modifier.fillMaxWidth(),
                 )
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(dimensionResource(R.dimen.element_padding)))
 
-                TabRow(
+                PrimaryTabRow(
                     selectedTabIndex = uiState.selectedTab,
                     containerColor = Color.Transparent,
                 ) {
@@ -278,12 +276,12 @@ fun QuranScreen(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(dimensionResource(R.dimen.element_padding)))
 
                 if (uiState.selectedTab == 0) {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(dimensionResource(R.dimen.element_padding)),
                     ) {
                         items(uiState.surahs, key = { it.number }) { surah ->
                             SurahListItem(
@@ -291,11 +289,12 @@ fun QuranScreen(
                                 onClick = { onAction(QuranUiAction.OnSurahClick(surah.number)) },
                             )
                         }
+                        item { Spacer(modifier = Modifier.height(dimensionResource(R.dimen.element_padding))) }
                     }
                 } else {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(dimensionResource(R.dimen.element_padding)),
                     ) {
                         items(uiState.juzList, key = { it.number }) { juz ->
                             JuzListItem(
@@ -303,6 +302,7 @@ fun QuranScreen(
                                 onClick = { onAction(QuranUiAction.OnJuzClick(juz)) },
                             )
                         }
+                        item { Spacer(modifier = Modifier.height(dimensionResource(R.dimen.element_padding))) }
                     }
                 }
             }
@@ -315,45 +315,41 @@ private fun LastReadCard(
     bookmark: QuranBookmark,
     onClick: () -> Unit,
 ) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onClick() },
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer,
-        ),
-    ) {
+    ACard(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+    ) { cardPadding ->
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(cardPadding),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = stringResource(R.string.last_read),
                     style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold,
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = bookmark.surahName,
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
                     text = "${stringResource(R.string.page)} ${bookmark.pageNumber}",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             Icon(
                 painter = painterResource(R.drawable.quran),
                 contentDescription = null,
-                modifier = Modifier.size(48.dp),
-                tint = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f),
+                modifier = Modifier.size(44.dp),
+                tint = MaterialTheme.colorScheme.primary,
             )
         }
     }
@@ -364,33 +360,28 @@ private fun SurahListItem(
     surah: Surah,
     onClick: () -> Unit,
 ) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onClick() },
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        ),
-    ) {
+    ACard(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+    ) { cardPadding ->
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp),
+                .padding(cardPadding),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
                 modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primaryContainer),
+                    .size(34.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.secondaryContainer),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
                     text = surah.number.toString(),
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
                 )
             }
 
@@ -412,7 +403,7 @@ private fun SurahListItem(
 
             Text(
                 text = surah.nameArabic,
-                style = MaterialTheme.typography.headlineSmall,
+                style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
                 textAlign = TextAlign.End,
@@ -426,25 +417,20 @@ private fun JuzListItem(
     juz: JuzInfo,
     onClick: () -> Unit,
 ) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onClick() },
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        ),
-    ) {
+    ACard(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+    ) { cardPadding ->
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp),
+                .padding(cardPadding),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
                 modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
+                    .size(34.dp)
+                    .clip(RoundedCornerShape(8.dp))
                     .background(MaterialTheme.colorScheme.tertiaryContainer),
                 contentAlignment = Alignment.Center,
             ) {

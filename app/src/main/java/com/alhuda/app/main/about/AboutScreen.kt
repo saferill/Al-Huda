@@ -33,8 +33,10 @@ import androidx.compose.ui.unit.dp
 import com.alhuda.app.BuildConfig
 import com.alhuda.app.R
 import com.alhuda.app.core.presentation.components.ACard
+import com.alhuda.app.core.presentation.components.InformationRow
 import com.alhuda.app.core.presentation.components.ScreenScaffold
 import com.alhuda.app.core.presentation.components.SettingHeader
+import com.alhuda.app.core.presentation.components.SettingLabel
 import com.alhuda.app.core.presentation.navigation.NavigationController
 import com.alhuda.app.core.presentation.navigation.Route
 
@@ -71,7 +73,7 @@ fun AboutScreen(onAction: (AboutUiAction) -> Unit = {}) {
                         painter = painterResource(R.drawable.logo_alhuda),
                         contentDescription = null,
                         modifier = Modifier
-                            .size(64.dp)
+                            .size(68.dp)
                             .clip(RoundedCornerShape(16.dp)),
                     )
                     Spacer(modifier = Modifier.height(10.dp))
@@ -99,26 +101,32 @@ fun AboutScreen(onAction: (AboutUiAction) -> Unit = {}) {
                         },
                     )
                 }
-                HorizontalDivider()
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
                 SettingHeader(stringResource(R.string.developer_name_title), stringResource(R.string.developer_name))
-                HorizontalDivider()
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
                 Text(
                     stringResource(R.string.app_about_description),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                HorizontalDivider()
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { NavigationController.navigateTo(Route.Main.PrivacyPolicy) },
+                        .clip(MaterialTheme.shapes.small)
+                        .clickable { NavigationController.navigateTo(Route.Main.PrivacyPolicy) }
+                        .padding(vertical = 4.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(
+                    SettingLabel(
                         stringResource(R.string.privacy_policy_title),
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Medium,
                     )
                     Icon(
@@ -127,13 +135,19 @@ fun AboutScreen(onAction: (AboutUiAction) -> Unit = {}) {
                         tint = MaterialTheme.colorScheme.primary,
                     )
                 }
-                HorizontalDivider()
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
                 SettingHeader(stringResource(R.string.license), stringResource(R.string.license_type))
-                HorizontalDivider()
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { uriHandler.openUri(GITHUB_REPO_URL) },
+                        .clip(MaterialTheme.shapes.small)
+                        .clickable { uriHandler.openUri(GITHUB_REPO_URL) }
+                        .padding(vertical = 4.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -147,11 +161,15 @@ fun AboutScreen(onAction: (AboutUiAction) -> Unit = {}) {
                         tint = MaterialTheme.colorScheme.primary,
                     )
                 }
-                HorizontalDivider()
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { uriHandler.openUri(GITHUB_ISSUES_URL) },
+                        .clip(MaterialTheme.shapes.small)
+                        .clickable { uriHandler.openUri(GITHUB_ISSUES_URL) }
+                        .padding(vertical = 4.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -165,12 +183,17 @@ fun AboutScreen(onAction: (AboutUiAction) -> Unit = {}) {
                         tint = MaterialTheme.colorScheme.primary,
                     )
                 }
-                HorizontalDivider()
-                Text(
-                    stringResource(R.string.about_credits),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+                InformationRow(
+                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                ) {
+                    Text(
+                        stringResource(R.string.about_credits),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
             }
         }
     }

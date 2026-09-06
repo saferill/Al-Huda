@@ -6,7 +6,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,10 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
@@ -44,13 +40,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.alhuda.app.R
+import com.alhuda.app.core.presentation.components.ACard
 import com.alhuda.app.core.presentation.components.ScreenScaffold
 import com.alhuda.app.core.presentation.navigation.NavigationController
 
@@ -73,7 +72,7 @@ fun PrayerGuideScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 16.dp),
+                .padding(horizontal = dimensionResource(R.dimen.page_padding)),
         ) {
             PrimaryTabRow(
                 selectedTabIndex = selectedTab,
@@ -91,27 +90,27 @@ fun PrayerGuideScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(dimensionResource(R.dimen.element_padding)))
 
             if (selectedTab == 0) {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(dimensionResource(R.dimen.element_padding)),
                 ) {
                     items(PrayerGuideData.dhikrList, key = { it.id }) { item ->
                         DhikrCard(item = item, isIndonesian = isIndonesian)
                     }
-                    item { Spacer(modifier = Modifier.height(16.dp)) }
+                    item { Spacer(modifier = Modifier.height(dimensionResource(R.dimen.element_padding))) }
                 }
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(dimensionResource(R.dimen.element_padding)),
                 ) {
                     items(PrayerGuideData.prayerGuides, key = { it.id }) { item ->
                         PrayerGuideCard(item = item, isIndonesian = isIndonesian)
                     }
-                    item { Spacer(modifier = Modifier.height(16.dp)) }
+                    item { Spacer(modifier = Modifier.height(dimensionResource(R.dimen.element_padding))) }
                 }
             }
         }
@@ -125,17 +124,11 @@ private fun DhikrCard(
 ) {
     var tapCount by remember { mutableIntStateOf(0) }
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        ),
-    ) {
+    ACard(modifier = Modifier.fillMaxWidth()) { cardPadding ->
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(cardPadding),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -144,16 +137,16 @@ private fun DhikrCard(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(32.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primaryContainer),
+                        .size(28.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.secondaryContainer),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
                         text = item.id.toString(),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
                     )
                 }
 
@@ -162,7 +155,7 @@ private fun DhikrCard(
                 Text(
                     text = if (isIndonesian) item.titleId else item.titleEn,
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.weight(1f),
                 )
@@ -181,7 +174,7 @@ private fun DhikrCard(
             Text(
                 text = item.arabic,
                 style = MaterialTheme.typography.headlineSmall.copy(
-                    lineHeight = 40.sp,
+                    lineHeight = 38.sp,
                 ),
                 color = MaterialTheme.colorScheme.primary,
                 textAlign = TextAlign.End,
@@ -193,7 +186,7 @@ private fun DhikrCard(
             Text(
                 text = item.latin,
                 style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium,
+                fontStyle = FontStyle.Italic,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
@@ -202,12 +195,12 @@ private fun DhikrCard(
             Text(
                 text = if (isIndonesian) item.translationId else item.translationEn,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
             )
 
             if (item.targetCount > 1) {
                 Spacer(modifier = Modifier.height(12.dp))
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Row(
@@ -224,7 +217,7 @@ private fun DhikrCard(
                                 tapCount = 0
                             }
                         },
-                        shape = RoundedCornerShape(12.dp),
+                        shape = MaterialTheme.shapes.small,
                     ) {
                         Text(
                             text = if (isDone) {
@@ -258,20 +251,14 @@ private fun PrayerGuideCard(
 ) {
     var isExpanded by remember { mutableStateOf(false) }
 
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .clickable { isExpanded = !isExpanded },
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        ),
-    ) {
+    ACard(
+        onClick = { isExpanded = !isExpanded },
+        modifier = Modifier.fillMaxWidth(),
+    ) { cardPadding ->
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(cardPadding),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -279,8 +266,8 @@ private fun PrayerGuideCard(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
+                        .size(32.dp)
+                        .clip(RoundedCornerShape(8.dp))
                         .background(MaterialTheme.colorScheme.tertiaryContainer),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -298,7 +285,7 @@ private fun PrayerGuideCard(
                     Text(
                         text = if (isIndonesian) item.titleId else item.titleEn,
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
+                        fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurface,
                     )
                     Text(
@@ -325,14 +312,14 @@ private fun PrayerGuideCard(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 14.dp),
+                        .padding(top = 12.dp),
                 ) {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     Spacer(modifier = Modifier.height(12.dp))
 
                     if (item.intentionArabic.isNotEmpty()) {
                         Text(
-                            text = if (isIndonesian) "Niat / Bacaan Utama:" else "Intention / Key Recitation:",
+                            text = if (isIndonesian) "Niat / Doa Utama" else "Intention / Key Recitation",
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary,
@@ -354,7 +341,7 @@ private fun PrayerGuideCard(
                         Text(
                             text = item.intentionLatin,
                             style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Medium,
+                            fontStyle = FontStyle.Italic,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
 
@@ -363,14 +350,14 @@ private fun PrayerGuideCard(
                         Text(
                             text = if (isIndonesian) item.intentionTranslationId else item.intentionTranslationEn,
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
                         )
 
                         Spacer(modifier = Modifier.height(14.dp))
                     }
 
                     Text(
-                        text = if (isIndonesian) "Tata Cara & Langkah-langkah:" else "Steps & Guidelines:",
+                        text = if (isIndonesian) "Tata Cara & Pelaksanaan" else "Steps & Guidelines",
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.secondary,
@@ -382,7 +369,7 @@ private fun PrayerGuideCard(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 4.dp),
+                                .padding(vertical = 3.dp),
                         ) {
                             Text(
                                 text = "${index + 1}. ",

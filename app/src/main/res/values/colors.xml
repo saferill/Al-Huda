@@ -7,10 +7,10 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
-    <color name="intro_background">#FF00585A</color>
-    <color name="intro_curve_background">#FF006663</color>
-    <color name="header_background_light">#FF008083</color>
-    <color name="header_background_dark">#FF007578</color>
+    <color name="intro_background">#FF0F4C3A</color>
+    <color name="intro_curve_background">#FF145A45</color>
+    <color name="header_background_light">#FF0F4C3A</color>
+    <color name="header_background_dark">#FF0D3E30</color>
 
     <color name="bg_compat">#D5F8F8F8</color>
     <color name="active_prayer">#008205</color>
