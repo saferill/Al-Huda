@@ -5,7 +5,10 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.LruCache
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
@@ -18,13 +21,15 @@ import javax.inject.Singleton
 class QuranPageLoader @Inject constructor(
     @ApplicationContext private val context: Context,
 ) {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     private val memoryCache = object : LruCache<Int, Bitmap>(30) {
         override fun sizeOf(key: Int, value: Bitmap): Int {
             return value.byteCount / 1024
         }
     }
 
-    private val cacheDir = File(context.cacheDir, "quran_mushaf_pages").apply {
+    private val storageDir = File(context.filesDir, "quran_mushaf_pages").apply {
         if (!exists()) mkdirs()
     }
 
@@ -34,6 +39,7 @@ class QuranPageLoader @Inject constructor(
         synchronized(memoryCache) {
             val cached = memoryCache.get(page)
             if (cached != null && !cached.isRecycled) {
+                prefetchAdjacentPages(page)
                 return@withContext cached
             }
         }
@@ -47,11 +53,12 @@ class QuranPageLoader @Inject constructor(
                 synchronized(memoryCache) {
                     memoryCache.put(page, bitmap)
                 }
+                prefetchAdjacentPages(page)
                 return@withContext bitmap
             }
         } catch (_: Exception) {}
 
-        val file = File(cacheDir, String.format(java.util.Locale.US, "page_%03d.png", page))
+        val file = File(storageDir, String.format(java.util.Locale.US, "page_%03d.png", page))
         if (file.exists() && file.length() > 0) {
             try {
                 val bitmap = BitmapFactory.decodeFile(file.absolutePath)
@@ -59,6 +66,7 @@ class QuranPageLoader @Inject constructor(
                     synchronized(memoryCache) {
                         memoryCache.put(page, bitmap)
                     }
+                    prefetchAdjacentPages(page)
                     return@withContext bitmap
                 }
             } catch (_: Exception) {}
@@ -69,12 +77,49 @@ class QuranPageLoader @Inject constructor(
             synchronized(memoryCache) {
                 memoryCache.put(page, downloaded)
             }
+            prefetchAdjacentPages(page)
         }
         downloaded
     }
 
+    private fun prefetchAdjacentPages(currentPage: Int) {
+        scope.launch {
+            val nextPage = currentPage + 1
+            val prevPage = currentPage - 1
+            if (nextPage in 1..604) {
+                prefetchSinglePage(nextPage)
+            }
+            if (prevPage in 1..604) {
+                prefetchSinglePage(prevPage)
+            }
+        }
+    }
+
+    private fun prefetchSinglePage(page: Int) {
+        synchronized(memoryCache) {
+            if (memoryCache.get(page) != null) return
+        }
+        val file = File(storageDir, String.format(java.util.Locale.US, "page_%03d.png", page))
+        if (file.exists() && file.length() > 0) {
+            try {
+                val bitmap = BitmapFactory.decodeFile(file.absolutePath)
+                if (bitmap != null) {
+                    synchronized(memoryCache) {
+                        memoryCache.put(page, bitmap)
+                    }
+                }
+            } catch (_: Exception) {}
+            return
+        }
+        downloadPage(page, file)?.let { downloaded ->
+            synchronized(memoryCache) {
+                memoryCache.put(page, downloaded)
+            }
+        }
+    }
+
     private fun downloadPage(page: Int, targetFile: File): Bitmap? {
-        val urlString = String.format("https://android.quran.com/data/width_1024/page%03d.png", page)
+        val urlString = String.format(java.util.Locale.US, "https://android.quran.com/data/width_1024/page%03d.png", page)
         var connection: HttpURLConnection? = null
         return try {
             val url = URL(urlString)
