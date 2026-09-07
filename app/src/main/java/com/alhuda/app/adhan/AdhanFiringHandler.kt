@@ -96,6 +96,8 @@ class AdhanFiringHandler @Inject constructor(
 
         settingsRepository.markDelivered(AdhanContract.ADHAN_NOTIFICATION_ID, timestamp)
 
+        adhanScheduler.schedule()
+
         notificationRepository.cancelNotification(AdhanContract.PRE_ADHAN_NOTIFICATION_ID)
         val settings = settingsRepository.data.first()
         val alarmSettings = alarmSettingsRepository.data.first()
@@ -103,56 +105,58 @@ class AdhanFiringHandler @Inject constructor(
         val silencedUntil = settings.silencedUntilMillis ?: 0L
         if (Clock.System.now().toEpochMilliseconds() < silencedUntil) {
             postMissedNotification(prayer, timestamp, settings)
-            adhanScheduler.schedule()
             return
         }
 
-        val body = buildBody(timestamp, settings, alarmSettings)
-        val entry = if (playSound) resolveSound(settings, prayer) else null
-        val soundUri = entry?.toAudioUri(context)
-        val vibration = alarmSettings.getVibrationSettings(prayer) ?: alarmSettings.vibrationMode
+        try {
+            val body = buildBody(timestamp, settings, alarmSettings)
+            val entry = if (playSound) resolveSound(settings, prayer) else null
+            val soundUri = entry?.toAudioUri(context)
+            val vibration = alarmSettings.getVibrationSettings(prayer) ?: alarmSettings.vibrationMode
 
-        val intrusive = vibration == VibrationMode.Continuous ||
-            (soundUri != null && audioDurationProbe.isIntrusive(entry))
-        if (soundUri != null && intrusive) {
+            val intrusive = vibration == VibrationMode.Continuous ||
+                (soundUri != null && audioDurationProbe.isIntrusive(entry))
+            if (soundUri != null && intrusive) {
 
-            if (CallStateInspector.isCallActive(context)) {
-                val callBody = localizedResources.current.getString(
-                    R.string.missed_during_call_body,
-                    settings.formatTime(timestamp),
-                )
-                postNotifyOnlyNotification(prayer, settings.formatTime(timestamp), callBody, settings)
+                if (CallStateInspector.isCallActive(context)) {
+                    val callBody = localizedResources.current.getString(
+                        R.string.missed_during_call_body,
+                        settings.formatTime(timestamp),
+                    )
+                    postNotifyOnlyNotification(prayer, settings.formatTime(timestamp), callBody, settings)
+                } else {
+                    playbackLauncher.launch(
+                        PlaybackRequest.from(
+                            settings = settings,
+                            alarmSettings = alarmSettings,
+                            title = localizedResources.current.getString(prayer.stringRes),
+                            body = body,
+                            timeLabel = settings.formatTime(timestamp),
+                            soundUri = soundUri,
+                            channelId = adhanChannel(settings),
+                            loop = entry.loop,
+                            vibration = vibration,
+                            prayerName = prayer.name,
+                        ),
+                    )
+                }
             } else {
-                playbackLauncher.launch(
-                    PlaybackRequest.from(
-                        settings = settings,
-                        alarmSettings = alarmSettings,
-                        title = localizedResources.current.getString(prayer.stringRes),
-                        body = body,
-                        timeLabel = settings.formatTime(timestamp),
-                        soundUri = soundUri,
-                        channelId = adhanChannel(settings),
-                        loop = entry.loop,
-                        vibration = vibration,
-                        prayerName = prayer.name,
-                    ),
-                )
-            }
-        } else {
 
-            postNotifyOnlyNotification(
-                prayer,
-                settings.formatTime(timestamp),
-                body,
-                settings,
-                stoppableSound = soundUri != null,
-            )
-            if (soundUri != null) {
-                if (vibration != VibrationMode.Off) VibrationController.vibrate(context, VibrationMode.Once)
-                softSoundPlayer.play(soundUri, stopOnVolumeButton = settings.volumeButtonStopsAdhan)
+                postNotifyOnlyNotification(
+                    prayer,
+                    settings.formatTime(timestamp),
+                    body,
+                    settings,
+                    stoppableSound = soundUri != null,
+                )
+                if (soundUri != null) {
+                    if (vibration != VibrationMode.Off) VibrationController.vibrate(context, VibrationMode.Once)
+                    softSoundPlayer.play(soundUri, stopOnVolumeButton = settings.volumeButtonStopsAdhan)
+                }
             }
+        } finally {
+            adhanScheduler.schedule()
         }
-        adhanScheduler.schedule()
     }
 
     private suspend fun postMissedNotification(
